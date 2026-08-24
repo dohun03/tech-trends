@@ -1,0 +1,35 @@
+name: Deploy to Cloud
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH를 통한 인스턴스 배포
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 레포지터리 폴더 이동 또는 최초 클론
+            if [ ! -d "app" ]; then
+              git clone https://github.com/dohun03/tech-trends.git app
+            fi
+            cd app
+            
+            # 최신 코드 수신
+            git pull origin main
+            
+            # .env 파일 생성
+            echo "${{ secrets.ENV_FILE }}" > .env
+            
+            # Docker 컨테이너 재빌드 및 재실행
+            docker compose down
+            docker compose up -d --build
+            
+            # 사용하지 않는 무거운 Docker 이미지 정리
+            docker image prune -f
