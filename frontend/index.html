@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tech Miner | 테크 트렌드 요약</title>
+  <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --text-color: #212529;
+      --text-muted: #868e96;
+      --primary: #343a40;
+      --accent: #4c6ef5;
+      --border-color: #dee2e6;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    /* 상단 검색 영역 */
+    .search-container {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+      border: 3px solid var(--primary);
+      border-radius: 8px;
+      background-color: var(--card-bg);
+      position: relative;
+    }
+
+    .search-input {
+      flex: 1;
+      border: none;
+      padding: 15px 50px 15px 20px;
+      font-size: 16px;
+      outline: none;
+      background: transparent;
+      color: var(--text-color);
+    }
+
+    .clear-btn {
+      position: absolute;
+      right: 55px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: none;
+      padding: 5px;
+    }
+
+    .clear-btn:hover { color: var(--primary); }
+
+    .search-btn {
+      background: transparent;
+      border: none;
+      width: 55px;
+      height: 100%;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px solid var(--border-color);
+    }
+
+    /* 필터 및 메타바 영역 */
+    .meta-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 30px;
+      font-size: 14px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .filters-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .custom-select {
+      padding: 6px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    /* [수정] disabled 상태인 셀렉트 박스 시각적 처리 */
+    .custom-select:disabled {
+      background-color: #e9ecef;
+      color: #adb5bd;
+      cursor: not-allowed;
+    }
+
+    .toggle-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      color: var(--text-color);
+      transition: all 0.2s;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .toggle-btn.active {
+      background-color: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    .divider {
+      color: var(--border-color);
+      user-select: none;
+    }
+
+    /* 토글 스위치 디자인 */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e0;
+      transition: .4s;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+    }
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+    .slider.round {
+      border-radius: 22px;
+    }
+    .slider.round:before {
+      border-radius: 50%;
+    }
+
+    /* 카드 리스트 영역 */
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      padding: 24px;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .card-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-source {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .badge-new {
+      background-color: #e63946;
+      color: #ffffff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 0 0 15px 0;
+      line-height: 1.4;
+    }
+
+    .summary-list {
+      margin: 0 0 20px 0;
+      padding-left: 20px;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .summary-list li { margin-bottom: 8px; }
+
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .tag {
+      background-color: var(--bg-color);
+      border: 1px solid var(--border-color);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+      padding-top: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .metrics-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .metric-icon {
+      width: 15px;
+      height: 15px;
+      fill: currentColor;
+    }
+
+    .footer-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .detail-btn {
+      background-color: var(--card-bg);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+    }
+    .detail-btn:hover {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .origin-btn {
+      background-color: var(--bg-color);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+    .origin-btn:hover {
+      border-color: var(--primary);
+      color: var(--text-color);
+    }
+
+    .results-info-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .results-count-bar {
+      margin-bottom: 0;
+    }
+
+    .results-count-bar strong {
+      color: var(--accent);
+    }
+
+    .update-time {
+      margin-left: 0;
+      font-weight: 500;
+    }
+
+    /* 페이지네이션 */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 40px;
+    }
+
+    .page-link {
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--card-bg);
+      cursor: pointer;
+      color: var(--text-color);
+      font-weight: bold;
+    }
+    .page-link.active {
+      background-color: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .page-link:hover:not(.active) { background-color: var(--border-color); }
+
+    .empty-state {
+      text-align: center;
+      padding: 50px 20px;
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      color: var(--text-muted);
+    }
+
+    /* 모달 영역 */
+    .modal {
+      display: flex;
+      position: fixed;
+      z-index: 1000;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s, visibility 0.25s;
+    }
+    .modal.show { opacity: 1; visibility: visible; }
+
+    .modal-content {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 700px;
+      height: 80vh;
+      max-height: 700px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transform: translateY(15px);
+      transition: transform 0.25s;
+    }
+    .modal.show .modal-content { transform: translateY(0); }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .modal-header h2 { margin: 0; font-size: 20px; }
+
+    .modal-close {
+      font-size: 26px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 0;
+    }
+    .modal-close:hover { color: var(--primary); }
+
+    .modal-metrics-bar {
+      padding: 16px 24px 0;
+      background-color: var(--card-bg);
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+      font-size: 15px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      background-color: var(--bg-color);
+    }
+
+    @media (max-width: 600px) {
+      .meta-bar { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .update-time { align-self: flex-start; margin-left: 0; }
+      .card-footer { flex-direction: column; align-items: flex-start; }
+      .footer-actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 검색창 -->
+    <div class="search-container">
+      <input type="text" id="searchInput" class="search-input" placeholder="키워드 또는 질문을 입력하세요 (예: AI에 대한 이슈, Redis 캐싱 전략)">
+      <button id="clearBtn" class="clear-btn" title="검색어 초기화">&times;</button>
+      <button id="searchBtn" class="search-btn">🔍</button>
+    </div>
+
+    <!-- 필터 및 메타바 -->
+    <div class="meta-bar">
+      <div class="filters-group">
+        <select id="sourceSelect" class="custom-select">
+          <option value="ALL">전체 출처</option>
+        </select>
+        <span class="divider">|</span>
+
+        <button id="newFilterBtn" class="toggle-btn">🔥 NEW</button>
+        <span class="divider">|</span>
+
+        <select id="sortSelect" class="custom-select">
+          <optgroup label="날짜 정렬">
+            <option value="CREATED_DESC" selected>작성일 최신순</option>
+            <option value="CREATED_ASC">작성일 오래된순</option>
+            <option value="MINED_DESC">수집일 최신순</option>
+            <option value="MINED_ASC">수집일 오래된순</option>
+          </optgroup>
+          <optgroup label="인기 정렬">
+            <option value="LIKE_DESC">좋아요 많은순</option>
+            <option value="VIEW_DESC">조회수 많은순</option>
+            <option value="COMMENT_DESC">댓글 많은순</option>
+          </optgroup>
+          <optgroup label="검색 정렬" id="searchSortGroup">
+            <option value="RELEVANCE" id="relevanceOption">정확도순 ✨</option>
+          </optgroup>
+        </select>
+
+        <span class="divider">|</span>
+
+        <select id="limitSelect" class="custom-select">
+          <option value="5">5개씩</option>
+          <option value="10">10개씩</option>
+          <option value="50">50개씩</option>
+          <option value="100">100개씩</option>
+        </select>
+        <span class="divider">|</span>
+
+        <!-- 검색 토글 UI -->
+        <div id="searchTypeToggleContainer" style="display: flex; align-items: center; gap: 8px;">
+          <label class="toggle-switch">
+            <input type="checkbox" id="searchTypeToggle" checked>
+            <span class="slider round"></span>
+          </label>
+          <span class="toggle-label" style="font-size: 13px; font-weight: 600; color: var(--primary);">AI 스마트 검색 ✨</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="results-info-bar">
+      <div class="results-count-bar">총 <strong id="totalCount">0</strong>건의 아티클</div>
+      <div class="update-time">최근 수집: <span id="lastUpdated">-</span></div>
+    </div>
+
+    <!-- 카드 리스트 -->
+    <div id="cardList" class="card-list"></div>
+    <div id="pagination" class="pagination"></div>
+  </div>
+
+  <!-- 상세 모달 -->
+  <div id="detailModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">상세 요약</h2>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-metrics-bar" id="modalMetrics"></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer">
+        <button class="action-btn origin-btn" onclick="closeModal()">닫기</button>
+        <!-- [수정] 보안 및 호환성을 위한 rel 속성 추가 -->
+        <a id="modalOriginLink" href="#" target="_blank" rel="noopener noreferrer" class="action-btn detail-btn" style="display: none;">원문 읽기 ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:3000/api/trends';
+    const SOURCE_THEMES = {
+      'dev.to': { bg: '#000000', color: '#ffffff' },
+      'geeknews': { bg: '#808080', color: '#ffffff' },
+      'stackoverflow': { bg: '#e7700d', color: '#ffffff' },
+      'default': { bg: 'var(--primary)', color: '#ffffff' }
+    };
+
+    function getSourceStyle(sourceName) {
+      if (!sourceName) return `background-color: ${SOURCE_THEMES.default.bg}; color: ${SOURCE_THEMES.default.color};`;
+      const key = sourceName.toLowerCase().trim();
+      const theme = SOURCE_THEMES[key] || SOURCE_THEMES.default;
+      return `background-color: ${theme.bg}; color: ${theme.color};`;
+    }
+
+    const getParam = (key, defaultVal) => new URLSearchParams(window.location.search).get(key) || defaultVal;
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '날짜 미상';
+      const d = new Date(dateStr);
+      return isNaN(d) ? dateStr : d.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).slice(0, 11);
+    };
+    const formatDateTime = (dateStr) => {
+      if (!dateStr) return '날짜 미상';
+      const d = new Date(dateStr);
+      return isNaN(d) ? dateStr : d.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).slice(0, 16);
+    };
+
+    const renderValue = (val) => (val != null ? val : '-');
+
+    const icons = {
+      view: `<svg class="metric-icon" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`,
+      like: `<svg class="metric-icon" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.58 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>`,
+      comment: `<svg class="metric-icon" viewBox="0 0 24 24"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>`
+    };
+
+    const state = {
+      source: getParam('source', 'ALL'),
+      query: getParam('q', ''),
+      searchType: getParam('searchType', 'hybrid'),
+      isNew: getParam('isNew', 'false') === 'true',
+      sort: getParam('sort', 'CREATED_DESC'),
+      page: parseInt(getParam('page', '1')),
+      limit: parseInt(getParam('limit', '5')),
+      articleId: getParam('id', null),
+      data: [] 
+    };
+
+    const els = {
+      searchInput: document.getElementById('searchInput'),
+      searchBtn: document.getElementById('searchBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      sourceSelect: document.getElementById('sourceSelect'),
+      sortSelect: document.getElementById('sortSelect'),
+      searchSortGroup: document.getElementById('searchSortGroup'), // [수정] DOM 조작용 추가
+      relevanceOption: document.getElementById('relevanceOption'), // [수정] DOM 조작용 추가
+      limitSelect: document.getElementById('limitSelect'),
+      newFilterBtn: document.getElementById('newFilterBtn'),
+      searchTypeToggleContainer: document.getElementById('searchTypeToggleContainer'),
+      searchTypeToggle: document.getElementById('searchTypeToggle'),
+      cardList: document.getElementById('cardList'),
+      pagination: document.getElementById('pagination'),
+      totalCount: document.getElementById('totalCount'),
+      lastUpdated: document.getElementById('lastUpdated'),
+      modalMetrics: document.getElementById('modalMetrics')
+    };
+
+    async function init() {
+      await fetchSources();
+      syncUIWithState();
+      fetchTrends();
+      bindEvents();
+
+      if (state.articleId) {
+        openDetailByUrl(state.articleId);
+      }
+    }
+
+    // [수정] 검색 상태 및 토글 상태에 따라 셀렉트 박스 제어 조건 완벽화
+    function syncUIWithState() {
+      els.searchInput.value = state.query;
+      els.sourceSelect.value = state.source;
+      els.limitSelect.value = state.limit;
+      els.clearBtn.style.display = state.query ? 'block' : 'none';
+      els.newFilterBtn.classList.toggle('active', state.isNew);
+      els.searchTypeToggle.checked = (state.searchType === 'hybrid');
+
+      const isSearching = Boolean(state.query && state.query.trim() !== '');
+
+      if (isSearching) {
+        // 1. 검색어가 있을 때: 정확도순 옵션 노출
+        els.searchSortGroup.style.display = '';
+        els.relevanceOption.disabled = false;
+
+        if (state.searchType === 'hybrid') {
+          // 1-1. 하이브리드 모드: 무조건 '정확도순' 고정 및 정렬 선택 불가(disabled)
+          state.sort = 'RELEVANCE';
+          els.sortSelect.disabled = true;
+        } else {
+          // 1-2. 키워드 모드: 정렬 선택 가능, 별도 정렬 미선택 시 정확도순을 기본값으로 사용
+          els.sortSelect.disabled = false;
+          if (!state.sort || state.sort === 'CREATED_DESC') {
+            state.sort = 'RELEVANCE';
+          }
+        }
+      } else {
+        // 2. 검색어가 없을 때: 정확도순 항목 숨김 및 정렬 비활성화 해제
+        els.searchSortGroup.style.display = 'none';
+        els.sortSelect.disabled = false;
+
+        // 정확도순으로 남아있던 상태를 최신순으로 복원
+        if (state.sort === 'RELEVANCE') {
+          state.sort = 'CREATED_DESC';
+        }
+      }
+
+      els.sortSelect.value = state.sort;
+      updateUrl();
+    }
+
+    function updateUrl() {
+      const params = new URLSearchParams();
+      if (state.source !== 'ALL') params.set('source', state.source);
+      if (state.query) params.set('q', state.query);
+      if (state.searchType) params.set('searchType', state.searchType);
+      if (state.sort !== 'CREATED_DESC') params.set('sort', state.sort);
+      if (state.isNew) params.set('isNew', 'true');
+      if (state.page !== 1) params.set('page', state.page);
+      if (state.limit !== 5) params.set('limit', state.limit);
+      if (state.articleId) params.set('id', state.articleId);
+
+      const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    async function fetchSources() {
+      try {
+        const res = await fetch('http://localhost:3000/api/trends/sources');
+        if (!res.ok) return;
+        const sources = await res.json();
+        sources.forEach(src => {
+          const opt = document.createElement('option');
+          opt.value = src;
+          opt.textContent = src;
+          els.sourceSelect.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('출처 목록 로드 실패', e);
+      }
+    }
+
+    async function fetchTrends() {
+      els.cardList.innerHTML = '<div class="empty-state">로딩 중... 🚀</div>';
+      try {
+        const isSearchMode = state.query && state.query.trim() !== '';
+        const endpoint = isSearchMode ? `${API_BASE_URL}/search` : API_BASE_URL;
+
+        const paramObj = {
+          page: state.page,
+          limit: state.limit,
+          source: state.source,
+          isNew: state.isNew,
+          sort: state.sort
+        };
+
+        if (isSearchMode) {
+          paramObj.search = state.query.trim();
+          paramObj.searchType = state.searchType;
+        }
+
+        const params = new URLSearchParams(paramObj);
+
+        const res = await fetch(`${endpoint}?${params.toString()}`);
+        
+        if (res.status === 429) {
+          els.cardList.innerHTML = `<div class="empty-state" style="color: #f59f00; font-weight: bold;">⏳ 검색 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.</div>`;
+          return;
+        }
+
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        
+        const { data, meta } = await res.json();
+        state.data = data || [];
+        
+        renderCards(state.data);
+        renderPagination(meta.totalPages);
+        els.totalCount.textContent = meta.totalCount || 0;
+      } catch (e) {
+        console.error('fetchTrends 에러:', e);
+        els.cardList.innerHTML = `<div class="empty-state" style="color: #fa5252;">서버 연결 실패. 백엔드 상태를 확인하세요.</div>`;
+      }
+    }
+
+    function renderCards(trends) {
+      updateLastMinedTime(trends);
+      if (!trends.length) {
+        els.cardList.innerHTML = `<div class="empty-state">조건에 맞는 결과가 없습니다.</div>`;
+        return;
+      }
+
+      const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+      
+      els.cardList.innerHTML = trends.map(item => {
+        const isNew = item.mined_at && new Date(item.mined_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) === todayStr;
+        const tagsHtml = (item.technical_tags || '').split(',')
+          .filter(t => t.trim()).map(t => `<span class="tag">#${t.trim()}</span>`).join('');
+        const summaryHtml = (item.short_summary || []).map(line => `<li>${line}</li>`).join('');
+
+        return `
+          <div class="card" data-card-id="${item.id}">
+            <div class="card-header">
+              <div class="card-header-left">
+                <span class="card-source" style="${getSourceStyle(item.source)}">${item.source || '알 수 없음'}</span>
+                ${isNew ? '<span class="badge-new">NEW</span>' : ''}
+              </div>
+              <span>작성일: ${formatDate(item.created_at)}</span>
+            </div>
+            <h3 class="card-title">${item.title}</h3>
+            <ul class="summary-list">${summaryHtml || '<li>요약 없음</li>'}</ul>
+            <div class="tag-container">${tagsHtml}</div>
+            
+            <div class="card-footer">
+              <div class="metrics-container">
+                <span class="metric-item" title="조회수">${icons.view} ${renderValue(item.view_count)}</span>
+                <span class="metric-item" title="좋아요/추천">${icons.like} ${renderValue(item.like_count)}</span>
+                <span class="metric-item" title="댓글 수">${icons.comment} ${renderValue(item.comment_count)}</span>
+              </div>
+              
+              <div class="footer-actions">
+                <button class="action-btn detail-btn" onclick="openDetail('${item.id}')">상세 요약 보기</button>
+                <!-- [수정] 보안 강화를 위한 rel 속성 추가 -->
+                ${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noopener noreferrer" class="action-btn origin-btn">원문 ↗</a>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderPagination(totalPages) {
+      els.pagination.innerHTML = '';
+      if (totalPages <= 1) return;
+
+      const groupSize = 5;
+      const start = Math.floor((state.page - 1) / groupSize) * groupSize + 1;
+      const end = Math.min(start + groupSize - 1, totalPages);
+
+      if (start > 1) {
+        els.pagination.innerHTML += `<button class="page-link" onclick="goToPage(${start - 1})">이전</button>`;
+      }
+      for (let i = start; i <= end; i++) {
+        els.pagination.innerHTML += `<button class="page-link ${i === state.page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+      }
+      if (end < totalPages) {
+        els.pagination.innerHTML += `<button class="page-link" onclick="goToPage(${end + 1})">다음</button>`;
+      }
+    }
+
+    function updateLastMinedTime(trends) {
+      const dates = trends.map(t => t.mined_at).filter(Boolean);
+      if (!dates.length) return els.lastUpdated.textContent = '-';
+      
+      const latest = dates.reduce((a, b) => a > b ? a : b);
+      els.lastUpdated.textContent = formatDateTime(latest);
+    }
+
+    let isSubmitting = false;
+
+    async function handleSearch() {
+      if (isSubmitting) return;
+
+      try {
+        isSubmitting = true;
+        state.query = els.searchInput.value.trim();
+        state.page = 1;
+
+        syncUIWithState();
+        await fetchTrends();
+      } catch (error) {
+        console.error('검색 중 오류 발생:', error);
+      } finally {
+        isSubmitting = false;
+      }
+    }
+
+    function goToPage(p) {
+      state.page = p;
+      syncUIWithState();
+      fetchTrends();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function bindEvents() {
+      els.searchBtn.onclick = handleSearch;
+
+      els.searchInput.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleSearch();
+        }
+      };
+
+      els.searchInput.oninput = () => { 
+        els.clearBtn.style.display = els.searchInput.value ? 'block' : 'none'; 
+      };
+      
+      // [수정] 검색어 초기화 시 상태 제어 동기화
+      els.clearBtn.onclick = () => {
+        els.searchInput.value = '';
+        state.query = '';
+        state.sort = 'CREATED_DESC';
+        state.page = 1;
+        syncUIWithState();
+        fetchTrends();
+      };
+
+      // [수정] 검색 토글 변경 이벤트 분기 보완
+      els.searchTypeToggle.onchange = (e) => {
+        state.searchType = e.target.checked ? 'hybrid' : 'keyword';
+        state.page = 1;
+        
+        syncUIWithState();
+        if (state.query) {
+          fetchTrends();
+        }
+      };
+
+      els.sourceSelect.onchange = (e) => {
+        state.source = e.target.value;
+        state.page = 1;
+        syncUIWithState();
+        fetchTrends();
+      };
+
+      els.sortSelect.onchange = (e) => {
+        state.sort = e.target.value;
+        state.page = 1;
+        syncUIWithState();
+        fetchTrends();
+      };
+
+      els.limitSelect.onchange = (e) => {
+        state.limit = parseInt(e.target.value);
+        state.page = 1;
+        syncUIWithState();
+        fetchTrends();
+      };
+
+      els.newFilterBtn.onclick = () => {
+        state.isNew = !state.isNew;
+        state.page = 1;
+        syncUIWithState();
+        fetchTrends();
+      };
+
+      window.onclick = (e) => { if (e.target.id === 'detailModal') closeModal(); };
+      window.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+    }
+
+    async function openDetailByUrl(id) {
+      const localItem = state.data.find(t => String(t.id) === String(id));
+
+      if (localItem) {
+        renderModalContent(localItem);
+        scrollToCard(id);
+        return;
+      }
+
+      try {
+        const res = await fetch(`http://localhost:3000/api/trends/${id}`);
+        if (!res.ok) throw new Error('아티클을 찾을 수 없습니다.');
+        const item = await res.json();
+
+        renderModalContent(item);
+        scrollToCard(id);
+      } catch (e) {
+        console.error('단건 아티클 로드 실패:', e);
+        closeModal();
+      }
+    }
+
+    function scrollToCard(id) {
+      setTimeout(() => {
+        const cardEl = document.querySelector(`[data-card-id="${id}"]`);
+        if (cardEl) {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+
+    function openDetail(id) {
+      state.articleId = id;
+      updateUrl();
+      openDetailByUrl(id);
+    }
+
+    function renderModalContent(item) {
+      document.getElementById('modalTitle').textContent = item.title;
+      document.getElementById('modalBody').textContent = item.long_summary || '내용 없음';
+      
+      els.modalMetrics.innerHTML = `
+        <div class="metrics-container">
+          <span class="metric-item" title="조회수">${icons.view} ${renderValue(item.view_count)}</span>
+          <span class="metric-item" title="좋아요/추천">${icons.like} ${renderValue(item.like_count)}</span>
+          <span class="metric-item" title="댓글 수">${icons.comment} ${renderValue(item.comment_count)}</span>
+        </div>
+      `;
+      
+      const linkEl = document.getElementById('modalOriginLink');
+      linkEl.href = item.link_url || '#';
+      linkEl.style.display = item.link_url ? 'inline-flex' : 'none';
+
+      document.getElementById('detailModal').classList.add('show');
+      document.body.classList.add('modal-open');
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').classList.remove('show');
+      document.body.classList.remove('modal-open');
+      
+      if (state.articleId) {
+        state.articleId = null;
+        updateUrl();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
