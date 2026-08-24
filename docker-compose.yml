@@ -1,18 +1,30 @@
 version: '3.8'
 
 services:
-  # 1. 백엔드 NestJS 애플리케이션
+  nginx:
+    image: nginx:alpine
+    container_name: tech-trends-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: always
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: tech-trends-backend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     env_file:
       - .env
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - DB_HOST=postgres
       - DB_PORT=5432
       - REDIS_HOST=redis
@@ -26,12 +38,11 @@ services:
       - redis
     restart: always
 
-  # 2. PostgreSQL + pgvector
   postgres:
     image: pgvector/pgvector:pg16
     container_name: tech-trends-postgres
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-mypassword}
@@ -41,18 +52,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - /etc/localtime:/etc/localtime:ro
+    restart: always
 
-  # 3. Redis
   redis:
     image: redis:7-alpine
     container_name: tech-trends-redis
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     environment:
       - TZ=Asia/Seoul
     volumes:
       - redis_data:/data
       - /etc/localtime:/etc/localtime:ro
+    restart: always
 
 volumes:
   postgres_data:
