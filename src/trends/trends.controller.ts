@@ -5,7 +5,7 @@ import { TrendsQueryService } from './services/trends-query.service';
 import { Throttle } from '@nestjs/throttler';
 import { SearchTrendsQueryDto } from './dto/search-trends-query.dto';
 
-@Controller('api')
+@Controller('trends')
 export class TrendsController {
   constructor(
     private readonly trendsQueryService: TrendsQueryService,
@@ -13,28 +13,22 @@ export class TrendsController {
   ) {}
 
   // 트렌드 목록
-  @Get('trends')
+  @Get()
   getTrends(@Query() query: ListTrendsQueryDto) {
     return this.trendsQueryService.listTrends(query);
   }
 
   // 검색
   @Throttle({ global: { limit: 5, ttl: 10000 } })
-  @Get('trends/search')
+  @Get('search')
   searchTrends(@Query() query: SearchTrendsQueryDto) {
     return this.trendsQueryService.searchTrends(query);
   }
 
   // 출처 목록 조회
-  @Get('trends/sources')
+  @Get('sources')
   async getSources() {
     return this.trendsQueryService.getUniqueSources();
-  }
-
-  // 단일 아티클 조회
-  @Get('trends/:id')
-  getTrendById(@Param('id') id: number) {
-    return this.trendsQueryService.getTrendById(id);
   }
 
   // 스크래핑 테스트용 엔드포인트
@@ -46,5 +40,11 @@ export class TrendsController {
       success: true,
       message: '백엔드 터미널 콘솔을 확인해보세요!',
     };
+  }
+
+  // 단일 아티클 조회
+  @Get(':id')
+  getTrendById(@Param('id', ParseIntPipe) id: number) {
+    return this.trendsQueryService.getTrendById(id);
   }
 }
