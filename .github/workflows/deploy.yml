@@ -25,7 +25,9 @@ jobs:
             git pull origin main
             
             # .env 파일 생성
-            echo "${{ secrets.ENV_FILE }}" > .env
+            cat << 'EOF' > .env
+            ${{ secrets.ENV_FILE }}
+            EOF
             
             # Docker 컨테이너 재빌드 및 재실행
             docker compose down
