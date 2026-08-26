@@ -68,7 +68,9 @@
       padding: 5px;
     }
 
-    .clear-btn:hover { color: var(--primary); }
+    .clear-btn:hover {
+      color: var(--primary);
+    }
 
     .search-btn {
       background: transparent;
@@ -114,7 +116,6 @@
       font-weight: 500;
     }
 
-    /* [수정] disabled 상태인 셀렉트 박스 시각적 처리 */
     .custom-select:disabled {
       background-color: #e9ecef;
       color: #adb5bd;
@@ -151,11 +152,13 @@
       width: 40px;
       height: 22px;
     }
+
     .toggle-switch input {
       opacity: 0;
       width: 0;
       height: 0;
     }
+
     .slider {
       position: absolute;
       cursor: pointer;
@@ -166,6 +169,7 @@
       background-color: #cbd5e0;
       transition: .4s;
     }
+
     .slider:before {
       position: absolute;
       content: "";
@@ -176,15 +180,19 @@
       background-color: white;
       transition: .4s;
     }
+
     input:checked + .slider {
       background-color: var(--accent);
     }
+
     input:checked + .slider:before {
       transform: translateX(18px);
     }
+
     .slider.round {
       border-radius: 22px;
     }
+
     .slider.round:before {
       border-radius: 50%;
     }
@@ -253,7 +261,10 @@
       font-size: 15px;
       line-height: 1.6;
     }
-    .summary-list li { margin-bottom: 8px; }
+
+    .summary-list li {
+      margin-bottom: 8px;
+    }
 
     .tag-container {
       display: flex;
@@ -323,6 +334,7 @@
       border: 1px solid var(--primary);
       color: var(--primary);
     }
+
     .detail-btn:hover {
       background-color: var(--primary);
       color: #ffffff;
@@ -333,6 +345,7 @@
       border: 1px solid var(--border-color);
       color: var(--text-muted);
     }
+
     .origin-btn:hover {
       border-color: var(--primary);
       color: var(--text-color);
@@ -379,12 +392,16 @@
       color: var(--text-color);
       font-weight: bold;
     }
+
     .page-link.active {
       background-color: var(--primary);
       color: #ffffff;
       border-color: var(--primary);
     }
-    .page-link:hover:not(.active) { background-color: var(--border-color); }
+
+    .page-link:hover:not(.active) {
+      background-color: var(--border-color);
+    }
 
     .empty-state {
       text-align: center;
@@ -408,7 +425,11 @@
       visibility: hidden;
       transition: opacity 0.25s, visibility 0.25s;
     }
-    .modal.show { opacity: 1; visibility: visible; }
+
+    .modal.show {
+      opacity: 1;
+      visibility: visible;
+    }
 
     .modal-content {
       background-color: var(--card-bg);
@@ -419,20 +440,40 @@
       max-height: 850px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       transform: translateY(15px);
       transition: transform 0.25s;
     }
-    .modal.show .modal-content { transform: translateY(0); }
 
+    .modal.show .modal-content {
+      transform: translateY(0);
+    }
+
+    /* 모달 헤더 구조 개선 */
     .modal-header {
-      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px 24px 16px;
       border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-header-top {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
+      gap: 16px;
     }
-    .modal-header h2 { margin: 0; font-size: 20px; }
+
+    .modal-header-top h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
 
     .modal-close {
       font-size: 26px;
@@ -441,14 +482,60 @@
       border: none;
       background: none;
       padding: 0;
+      line-height: 1;
+      flex-shrink: 0;
     }
-    .modal-close:hover { color: var(--primary); }
+
+    .modal-close:hover {
+      color: var(--primary);
+    }
+
+    /* 메타지표 및 이전 버튼 영역 */
+    .modal-sub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
 
     .modal-metrics-bar {
-      padding: 16px 24px 0;
-      background-color: var(--card-bg);
+      padding: 0;
+      background-color: transparent;
     }
 
+    /* 이전 버튼 스타일 (제목 하단 우측 고정) */
+    .modal-back-btn {
+      display: none; /* JS 제어시 inline-flex로 노출 */
+      align-items: center;
+      gap: 6px;
+      background-color: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #495057;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+
+    .modal-back-btn:hover {
+      background-color: #e9ecef;
+      border-color: #ced4da;
+      color: #212529;
+      transform: translateX(-2px);
+    }
+
+    .modal-back-btn .back-icon {
+      transition: transform 0.2s ease;
+    }
+
+    .modal-back-btn:hover .back-icon {
+      transform: translateX(-1px);
+    }
+
+    /* 모달 본문 */
     .modal-body {
       padding: 24px;
       overflow-y: auto;
@@ -466,6 +553,7 @@
       background-color: var(--bg-color);
     }
 
+    /* 연관 아티클 */
     .related-section {
       padding: 16px 24px;
       border-top: 1px solid var(--border-color);
@@ -529,10 +617,23 @@
     }
 
     @media (max-width: 600px) {
-      .meta-bar { flex-direction: column; align-items: flex-start; gap: 12px; }
-      .update-time { align-self: flex-start; margin-left: 0; }
-      .card-footer { flex-direction: column; align-items: flex-start; }
-      .footer-actions { width: 100%; justify-content: flex-end; }
+      .meta-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .update-time {
+        align-self: flex-start;
+        margin-left: 0;
+      }
+      .card-footer {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .footer-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
     }
   </style>
 </head>
@@ -610,13 +711,27 @@
   <div id="detailModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="modalTitle">상세 요약</h2>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-header-top">
+          <h2 id="modalTitle">상세 요약</h2>
+          <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <!-- 제목 하단 우측 영역 (지표 메타바 + 이전 버튼) -->
+        <div class="modal-sub-header">
+          <div class="modal-metrics-bar" id="modalMetrics"></div>
+          <button id="modalBackBtn" class="modal-back-btn" onclick="goBackModal()" title="이전 아티클로 돌아가기">
+            <svg class="back-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            <span>이전 아티클</span>
+          </button>
+        </div>
       </div>
-      <div class="modal-metrics-bar" id="modalMetrics"></div>
+
       <div class="modal-body" id="modalBody"></div>
       
-      <!-- 연관 아티클 섹션 (신규) -->
+      <!-- 연관 아티클 섹션 -->
       <div class="related-section" id="modalRelatedSection" style="display:none;">
         <h3 class="related-title">🔗 연관 아티클</h3>
         <div class="related-list" id="modalRelatedList"></div>
@@ -624,7 +739,6 @@
 
       <div class="modal-footer">
         <button class="action-btn origin-btn" onclick="closeModal()">닫기</button>
-        <!-- [수정] 보안 및 호환성을 위한 rel 속성 추가 -->
         <a id="modalOriginLink" href="#" target="_blank" rel="noopener noreferrer" class="action-btn detail-btn" style="display: none;">원문 읽기 ↗</a>
       </div>
     </div>
@@ -675,7 +789,8 @@
       page: parseInt(getParam('page', '1')),
       limit: parseInt(getParam('limit', '5')),
       articleId: getParam('id', null),
-      data: [] 
+      data: [],
+      modalHistory: []
     };
 
     const els = {
@@ -696,7 +811,8 @@
       lastUpdated: document.getElementById('lastUpdated'),
       modalMetrics: document.getElementById('modalMetrics'),
       modalRelatedSection: document.getElementById('modalRelatedSection'),
-      modalRelatedList: document.getElementById('modalRelatedList')
+      modalRelatedList: document.getElementById('modalRelatedList'),
+      modalBackBtn: document.getElementById('modalBackBtn')
     };
 
     async function init() {
@@ -752,7 +868,7 @@
       updateUrl();
     }
 
-    function updateUrl() {
+    function updateUrl(usePush = false) {
       const params = new URLSearchParams();
       if (state.source !== 'ALL') params.set('source', state.source);
       if (state.query) params.set('q', state.query);
@@ -764,7 +880,11 @@
       if (state.articleId) params.set('id', state.articleId);
 
       const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
-      window.history.replaceState({}, '', newUrl);
+      if (usePush) {
+        window.history.pushState({ articleId: state.articleId }, '', newUrl);
+      } else {
+        window.history.replaceState({ articleId: state.articleId }, '', newUrl);
+      }
     }
 
     async function fetchSources() {
@@ -989,9 +1109,44 @@
 
       window.onclick = (e) => { if (e.target.id === 'detailModal') closeModal(); };
       window.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+
+      window.onpopstate = (e) => {
+        const currentUrlId = getParam('id', null);
+        if (currentUrlId) {
+          if (state.articleId && state.articleId !== currentUrlId) {
+            // 히스토리 내비게이션 시 modalHistory 관리
+            const prevIdx = state.modalHistory.lastIndexOf(currentUrlId);
+            if (prevIdx !== -1) {
+              state.modalHistory = state.modalHistory.slice(0, prevIdx);
+            }
+          }
+          state.articleId = currentUrlId;
+          openDetailByUrl(currentUrlId);
+        } else {
+          closeModal(false);
+        }
+      };
+    }
+
+    // 이전 버튼 노출 상태 제어 함수
+    function updateModalBackButton() {
+      if (els.modalBackBtn) {
+        els.modalBackBtn.style.display = state.modalHistory.length > 0 ? 'inline-flex' : 'none';
+      }
+    }
+
+    // 이전 아티클 이동 처리 함수
+    function goBackModal() {
+      if (state.modalHistory.length > 0) {
+        const prevId = state.modalHistory.pop();
+        state.articleId = prevId;
+        updateUrl(true);
+        openDetailByUrl(prevId);
+      }
     }
 
     async function openDetailByUrl(id) {
+      updateModalBackButton();
       const localItem = state.data.find(t => String(t.id) === String(id));
 
       if (localItem) {
@@ -1022,9 +1177,14 @@
       }, 100);
     }
 
-    function openDetail(id) {
+    function openDetail(id, isRelatedClick = false) {
+      if (isRelatedClick && state.articleId && String(state.articleId) !== String(id)) {
+        state.modalHistory.push(state.articleId);
+      } else if (!isRelatedClick) {
+        state.modalHistory = [];
+      }
       state.articleId = id;
-      updateUrl();
+      updateUrl(true);
       openDetailByUrl(id);
     }
 
@@ -1058,13 +1218,14 @@
       }
 
       els.modalRelatedList.innerHTML = items.map(item => `
-        <div class="related-item" onclick="openDetail('${item.id}')">
+        <div class="related-item" onclick="openDetail('${item.id}', true)">
           <span class="related-item-title">${item.title}</span>
           <span class="related-item-source" style="${getSourceStyle(item.source)}">${item.source || '알 수 없음'}</span>
         </div>
       `).join('');
     }
 
+    // 모달 내용 렌더링
     function renderModalContent(item) {
       document.getElementById('modalTitle').textContent = item.title;
       document.getElementById('modalBody').textContent = item.long_summary || '내용 없음';
@@ -1084,17 +1245,23 @@
       document.getElementById('detailModal').classList.add('show');
       document.body.classList.add('modal-open');
 
+      updateModalBackButton();
+
       loadRelatedArticles(item.id);
     }
 
-    function closeModal() {
+    function closeModal(updateHistory = true) {
       document.getElementById('detailModal').classList.remove('show');
       document.body.classList.remove('modal-open');
       els.modalRelatedList.innerHTML = '';
+      state.modalHistory = [];
+      updateModalBackButton();
       
       if (state.articleId) {
         state.articleId = null;
-        updateUrl();
+        if (updateHistory) {
+          updateUrl(true);
+        }
       }
     }
 
