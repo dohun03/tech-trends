@@ -39,17 +39,28 @@ export class TrendQueueEventsListener extends QueueEventsHost {
     let userMessage = '';
     if (result && result.savedArticles && result.savedArticles.length > 0) {
       userMessage = `📢 **[${result.sourceName}] 새로운 트렌드 아티클이 도착했습니다!**\n`;
-      
+
       for (let idx = 0; idx < result.savedArticles.length; idx++) {
         const article = result.savedArticles[idx];
         const detailUrl = `${baseUrl}/?id=${article.id}`;
-        const appendStr = `\n${idx + 1}. [${article.title}](<${detailUrl}>)`;
         
-        if (userMessage.length + appendStr.length > 1900) {
+        // 디스코드 문법 파괴 기호에 백슬래시(\) 이스케이프 적용
+        const safeTitle = article.title
+          .replace(/[\r\n]+/g, ' ')
+          .replace(/\\/g, '\\\\')
+          .replace(/`/g, '\\`')
+          .replace(/\[/g, '\\[')
+          .replace(/\]/g, '\\]')
+          .replace(/\(/g, '\\(')
+          .replace(/\)/g, '\\)');
+
+        const appendStr = `\n${idx + 1}. [${safeTitle}](<${detailUrl}>)`;
+
+        if (userMessage.length + appendStr.length > 1800) {
           userMessage += `\n\n...외 **${result.savedArticles.length - idx}개**의 아티클이 더 있습니다.`;
           break;
         }
-        
+
         userMessage += appendStr;
       }
     }

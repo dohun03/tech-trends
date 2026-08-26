@@ -57,10 +57,8 @@ describe('TrendQueueEventsListener', () => {
         returnvalue: mockReturnValue,
       });
 
-      // 총 2번 실행되었는지 검증
       expect(mockedAxios.post).toHaveBeenCalledTimes(2);
 
-      // 2번째 실행(유저 알림)에 유저 Webhook 주소와 안내 문구가 들어갔는지 검증
       expect(mockedAxios.post).toHaveBeenNthCalledWith(
         2,
         mockUserWebhook,
@@ -68,6 +66,34 @@ describe('TrendQueueEventsListener', () => {
           content: expect.stringContaining('📢 **[GEEKS] 새로운 트렌드 아티클이 도착했습니다!**'),
         }),
       );
+    });
+
+    it('아티클 제목에 디스코드 마크다운 파괴 특수문자(괄호, 백틱, 대괄호)가 포함되면 이스케이프 처리해야 한다', async () => {
+      const mockReturnValue = {
+        sourceName: 'GEEKS',
+        savedCount: 1,
+        savedArticles: [
+          {
+            id: 1,
+            title: 'Bash 명령어 실행 결과의 후행 개행 문자( ) 유지하는 방법 [테스트] `code`',
+            sourceId: 'geeks-1',
+            url: 'https://geeks.com/1',
+          },
+        ],
+      };
+
+      mockedAxios.post.mockResolvedValue({ status: 200 });
+
+      await listener.onCompleted({
+        jobId: 'job-789',
+        returnvalue: mockReturnValue,
+      });
+
+      const userCallPayload = mockedAxios.post.mock.calls[1][1] as { content: string };
+
+      expect(userCallPayload.content).toContain('문자\\( \\)');
+      expect(userCallPayload.content).toContain('\\[테스트\\]');
+      expect(userCallPayload.content).toContain('\\`code\\`');
     });
 
     it('아티클 목록이 1900자를 초과하면 메시지를 자르고 남은 개수를 표시해야 한다', async () => {
