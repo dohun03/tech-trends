@@ -1,4 +1,10 @@
-import { Injectable, Logger, InternalServerErrorException, NotFoundException, HttpException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+  NotFoundException,
+  HttpException,
+} from '@nestjs/common';
 import { AiService } from 'ai/ai.service';
 import { ListTrendsQueryDto } from 'trends/dto/list-trends-query.dto';
 import { SearchTrendsQueryDto } from 'trends/dto/search-trends-query.dto';
@@ -17,8 +23,20 @@ export class TrendsQueryService {
   // 일반 목록 조회
   async listTrends(query: ListTrendsQueryDto) {
     try {
-      const { page = 1, limit = 5, source = 'ALL', isNew = false, sort = 'CREATED_DESC' } = query;
-      const result = await this.techTrendRepository.listTrends({ page, limit, source, isNew, sort });
+      const {
+        page = 1,
+        limit = 5,
+        source = 'ALL',
+        isNew = false,
+        sort = 'CREATED_DESC',
+      } = query;
+      const result = await this.techTrendRepository.listTrends({
+        page,
+        limit,
+        source,
+        isNew,
+        sort,
+      });
 
       return {
         data: result.data,
@@ -31,27 +49,59 @@ export class TrendsQueryService {
       };
     } catch (error) {
       this.logger.error(`[listTrends] 조회 에러: ${error}`);
-      throw new InternalServerErrorException('트렌드 목록 조회 중 에러가 발생했습니다.');
+      throw new InternalServerErrorException(
+        '트렌드 목록 조회 중 에러가 발생했습니다.',
+      );
     }
   }
 
   // 검색 분기 처리
   async searchTrends(query: SearchTrendsQueryDto) {
-    const { page = 1, limit = 5, search, source = 'ALL', isNew = false, searchType = 'hybrid', sort = 'RELEVANCE' } = query;
+    const {
+      page = 1,
+      limit = 5,
+      search,
+      source = 'ALL',
+      isNew = false,
+      searchType = 'hybrid',
+      sort = 'RELEVANCE',
+    } = query;
 
     let result: { data: TechTrend[]; totalCount: number };
 
     // 단순 키워드 검색 (정렬 선택 가능)
     if (searchType === 'keyword') {
-      result = await this.techTrendRepository.searchKeyword({ page, limit, search: search.trim(), source, isNew, sort });
-    } 
+      result = await this.techTrendRepository.searchKeyword({
+        page,
+        limit,
+        search: search.trim(),
+        source,
+        isNew,
+        sort,
+      });
+    }
     // 하이브리드 검색 (RRF 점수 기반이므로 정확도순 고정)
     else {
       const vector = await this.aiService.embedSearchQuery(search.trim());
 
-      result = vector && vector.length > 0
-        ? await this.techTrendRepository.searchHybrid({ page, limit, search: search.trim(), source, isNew, vector })
-        : await this.techTrendRepository.searchKeyword({ page, limit, search: search.trim(), source, isNew, sort });
+      result =
+        vector && vector.length > 0
+          ? await this.techTrendRepository.searchHybrid({
+              page,
+              limit,
+              search: search.trim(),
+              source,
+              isNew,
+              vector,
+            })
+          : await this.techTrendRepository.searchKeyword({
+              page,
+              limit,
+              search: search.trim(),
+              source,
+              isNew,
+              sort,
+            });
     }
 
     return {
@@ -65,29 +115,63 @@ export class TrendsQueryService {
     };
   }
 
+  // 출처 목록 조회
   async getUniqueSources(): Promise<string[]> {
     try {
       return await this.techTrendRepository.findUniqueSources();
     } catch (error) {
       this.logger.error(`[getUniqueSources] 소스 목록 조회 에러: ${error}`);
-      throw new InternalServerErrorException('출처 목록을 불러오지 못했습니다.');
+      throw new InternalServerErrorException(
+        '출처 목록을 불러오지 못했습니다.',
+      );
     }
   }
 
+  // 특정 아티클 조회
   async getTrendById(id: number) {
     try {
       const article = await this.techTrendRepository.findById(id);
-      
+
       if (!article) {
         throw new NotFoundException(`ID가 ${id}인 아티클을 찾을 수 없습니다.`);
       }
       return article;
-
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(`[getTrendById] 단건 조회 에러 (ID: ${id}): ${error}`);
       throw new InternalServerErrorException(
         '아티클 상세 정보를 불러오는 중 에러가 발생했습니다.',
+      );
+    }
+  }
+
+  // 연관 아티클 조회
+  async getRelatedTrends(id: number, limit: number) {
+    try {
+      const article = await this.techTrendRepository.findById(id);
+
+      if (!article) {
+        throw new NotFoundException(`ID가 ${id}인 아티클을 찾을 수 없습니다.`);
+      }
+
+      if (!article.embedding || article.embedding.length === 0) {
+        return { data: [] };
+      }
+
+      const data = await this.techTrendRepository.findRelatedByEmbedding({
+        excludeId: id,
+        embedding: article.embedding,
+        limit,
+      });
+
+      return { data };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `[getRelatedTrends] 연관 아티클 조회 에러 (ID: ${id}): ${error}`,
+      );
+      throw new InternalServerErrorException(
+        '연관 아티클을 불러오는 중 에러가 발생했습니다.',
       );
     }
   }

@@ -414,9 +414,9 @@
       background-color: var(--card-bg);
       border-radius: 12px;
       width: 100%;
-      max-width: 700px;
-      height: 80vh;
-      max-height: 700px;
+      max-width: 720px;
+      height: 85vh;
+      max-height: 850px;
       display: flex;
       flex-direction: column;
       box-shadow: 0 10px 30px rgba(0,0,0,0.2);
@@ -464,6 +464,68 @@
       display: flex;
       justify-content: space-between;
       background-color: var(--bg-color);
+    }
+
+    .related-section {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .related-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin: 0 0 10px 0;
+    }
+
+    .related-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 140px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .related-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      background-color: var(--card-bg);
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+
+    .related-item:hover {
+      background-color: var(--bg-color);
+      border-color: var(--accent);
+    }
+
+    .related-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-color);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .related-item-source {
+      flex-shrink: 0;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .related-empty {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 4px 0;
     }
 
     @media (max-width: 600px) {
@@ -553,6 +615,13 @@
       </div>
       <div class="modal-metrics-bar" id="modalMetrics"></div>
       <div class="modal-body" id="modalBody"></div>
+      
+      <!-- 연관 아티클 섹션 (신규) -->
+      <div class="related-section" id="modalRelatedSection" style="display:none;">
+        <h3 class="related-title">🔗 연관 아티클</h3>
+        <div class="related-list" id="modalRelatedList"></div>
+      </div>
+
       <div class="modal-footer">
         <button class="action-btn origin-btn" onclick="closeModal()">닫기</button>
         <!-- [수정] 보안 및 호환성을 위한 rel 속성 추가 -->
@@ -625,7 +694,9 @@
       pagination: document.getElementById('pagination'),
       totalCount: document.getElementById('totalCount'),
       lastUpdated: document.getElementById('lastUpdated'),
-      modalMetrics: document.getElementById('modalMetrics')
+      modalMetrics: document.getElementById('modalMetrics'),
+      modalRelatedSection: document.getElementById('modalRelatedSection'),
+      modalRelatedList: document.getElementById('modalRelatedList')
     };
 
     async function init() {
@@ -957,6 +1028,43 @@
       openDetailByUrl(id);
     }
 
+    let relatedRequestToken = 0; // 빠른 연속 클릭 시 stale 응답 방지용 토큰
+
+    async function loadRelatedArticles(id) {
+      const token = ++relatedRequestToken;
+      els.modalRelatedSection.style.display = '';
+      els.modalRelatedList.innerHTML = '<div class="related-empty">불러오는 중...</div>';
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/${id}/related?limit=5`);
+        if (token !== relatedRequestToken) return; // 이미 다른 아티클로 전환된 경우 무시
+
+        if (!res.ok) throw new Error('연관 아티클 조회 실패');
+        const { data } = await res.json();
+
+        renderRelatedList(data);
+      } catch (e) {
+        console.error('연관 아티클 로드 실패:', e);
+        if (token === relatedRequestToken) {
+          els.modalRelatedList.innerHTML = '<div class="related-empty">연관 아티클을 불러오지 못했습니다.</div>';
+        }
+      }
+    }
+
+    function renderRelatedList(items) {
+      if (!items || items.length === 0) {
+        els.modalRelatedList.innerHTML = '<div class="related-empty">연관 아티클이 없습니다.</div>';
+        return;
+      }
+
+      els.modalRelatedList.innerHTML = items.map(item => `
+        <div class="related-item" onclick="openDetail('${item.id}')">
+          <span class="related-item-title">${item.title}</span>
+          <span class="related-item-source" style="${getSourceStyle(item.source)}">${item.source || '알 수 없음'}</span>
+        </div>
+      `).join('');
+    }
+
     function renderModalContent(item) {
       document.getElementById('modalTitle').textContent = item.title;
       document.getElementById('modalBody').textContent = item.long_summary || '내용 없음';
@@ -975,11 +1083,14 @@
 
       document.getElementById('detailModal').classList.add('show');
       document.body.classList.add('modal-open');
+
+      loadRelatedArticles(item.id);
     }
 
     function closeModal() {
       document.getElementById('detailModal').classList.remove('show');
       document.body.classList.remove('modal-open');
+      els.modalRelatedList.innerHTML = '';
       
       if (state.articleId) {
         state.articleId = null;

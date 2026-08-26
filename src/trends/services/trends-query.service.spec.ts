@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TrendsQueryService } from './trends-query.service';
 import { TechTrendRepository } from '../repositories/tech-trend.repository';
 import { AiService } from 'ai/ai.service';
-import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 
 describe('TrendsQueryService', () => {
   let service: TrendsQueryService;
@@ -16,6 +19,7 @@ describe('TrendsQueryService', () => {
       searchKeyword: jest.fn(),
       findUniqueSources: jest.fn(),
       findById: jest.fn(),
+      findRelatedByEmbedding: jest.fn(),
     };
 
     const mockAiService = {
@@ -85,7 +89,7 @@ describe('TrendsQueryService', () => {
       repository.searchHybrid.mockResolvedValue(mockResult as any);
 
       const result = await service.searchTrends({
-        search: '   NestJS   ', 
+        search: '   NestJS   ',
         page: 2,
         limit: 10,
       });
@@ -126,7 +130,10 @@ describe('TrendsQueryService', () => {
 
     it('AI 임베딩 결과가 null(API 실패/타임아웃)이면 searchKeyword를 호출해야 한다', async () => {
       aiService.embedSearchQuery.mockResolvedValue(null);
-      repository.searchKeyword.mockResolvedValue({ data: [], totalCount: 0 } as any);
+      repository.searchKeyword.mockResolvedValue({
+        data: [],
+        totalCount: 0,
+      } as any);
 
       await service.searchTrends({ search: 'Redis' });
 
@@ -135,19 +142,22 @@ describe('TrendsQueryService', () => {
     });
 
     it('searchType이 "keyword"일 경우 AI 임베딩을 생략하고 바로 searchKeyword를 호출해야 한다', async () => {
-      const mockResult = { data: [{ id: 3, title: '키워드 검색 테스트' }], totalCount: 1 };
-      
+      const mockResult = {
+        data: [{ id: 3, title: '키워드 검색 테스트' }],
+        totalCount: 1,
+      };
+
       repository.searchKeyword.mockResolvedValue(mockResult as any);
 
-      const result = await service.searchTrends({ 
+      const result = await service.searchTrends({
         search: ' NestJS ',
         searchType: 'keyword',
-        page: 1, 
-        limit: 5 
+        page: 1,
+        limit: 5,
       });
 
       expect(aiService.embedSearchQuery).not.toHaveBeenCalled();
-      
+
       expect(repository.searchKeyword).toHaveBeenCalledWith({
         page: 1,
         limit: 5,
@@ -156,9 +166,9 @@ describe('TrendsQueryService', () => {
         isNew: false,
         sort: 'RELEVANCE',
       });
-      
+
       expect(repository.searchHybrid).not.toHaveBeenCalled();
-      
+
       expect(result.data).toEqual(mockResult.data);
       expect(result.meta.totalCount).toBe(1);
     });
@@ -207,6 +217,66 @@ describe('TrendsQueryService', () => {
       repository.findById.mockRejectedValue(new Error('DB 다운'));
 
       await expect(service.getTrendById(1)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+  });
+
+  describe('getRelatedTrends', () => {
+    it('성공: embedding이 존재하면 findRelatedByEmbedding을 호출하고 결과를 반환해야 한다', async () => {
+      const mockEmbedding = [0.1, 0.2, 0.3];
+      const mockArticle = {
+        id: 1,
+        title: '기준 아티클',
+        embedding: mockEmbedding,
+      };
+      const mockRelated = [
+        { id: 2, title: '연관 아티클 1' },
+        { id: 3, title: '연관 아티클 2' },
+      ];
+
+      repository.findById.mockResolvedValue(mockArticle as any);
+      repository.findRelatedByEmbedding.mockResolvedValue(mockRelated as any);
+
+      const result = await service.getRelatedTrends(1, 5);
+
+      expect(repository.findById).toHaveBeenCalledWith(1);
+      expect(repository.findRelatedByEmbedding).toHaveBeenCalledWith({
+        excludeId: 1,
+        embedding: mockEmbedding,
+        limit: 5,
+      });
+      expect(result).toEqual({ data: mockRelated });
+    });
+
+    it('아티클이 존재하지 않을 경우 NotFoundException을 던져야 한다', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(service.getRelatedTrends(999, 5)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repository.findRelatedByEmbedding).not.toHaveBeenCalled();
+    });
+
+    it('아티클의 embedding이 null이거나 빈 배열이면 findRelatedByEmbedding 호출 없이 빈 배열을 반환해야 한다', async () => {
+      const mockArticleWithoutEmbedding = {
+        id: 1,
+        title: '임베딩 없음',
+        embedding: null,
+      };
+      repository.findById.mockResolvedValue(mockArticleWithoutEmbedding as any);
+
+      const result = await service.getRelatedTrends(1, 5);
+
+      expect(repository.findById).toHaveBeenCalledWith(1);
+      expect(repository.findRelatedByEmbedding).not.toHaveBeenCalled();
+      expect(result).toEqual({ data: [] });
+    });
+
+    it('DB 조회 중 에러 발생 시 InternalServerErrorException을 던져야 한다', async () => {
+      repository.findById.mockRejectedValue(new Error('DB 에러'));
+
+      await expect(service.getRelatedTrends(1, 5)).rejects.toThrow(
         InternalServerErrorException,
       );
     });

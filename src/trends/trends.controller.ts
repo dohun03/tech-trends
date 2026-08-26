@@ -4,6 +4,7 @@ import { ListTrendsQueryDto } from './dto/list-trends-query.dto';
 import { TrendsQueryService } from './services/trends-query.service';
 import { Throttle } from '@nestjs/throttler';
 import { SearchTrendsQueryDto } from './dto/search-trends-query.dto';
+import { GetRelatedTrendsQueryDto } from './dto/get-related-trends-query.dto';
 
 @Controller('trends')
 export class TrendsController {
@@ -46,5 +47,14 @@ export class TrendsController {
   @Get(':id')
   getTrendById(@Param('id', ParseIntPipe) id: number) {
     return this.trendsQueryService.getTrendById(id);
+  }
+
+  // 임베딩 기반 연관 아티클 조회
+  @Get(':id/related')
+  getRelatedTrends(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: GetRelatedTrendsQueryDto,
+  ) {
+    return this.trendsQueryService.getRelatedTrends(id, query.limit ?? 5);
   }
 }

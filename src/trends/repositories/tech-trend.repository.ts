@@ -27,6 +27,20 @@ interface SearchResult {
   totalCount: number;
 }
 
+export interface RelatedTrendRow {
+  id: number;
+  source: string;
+  title: string;
+  short_summary: string[];
+  link_url: string;
+  technical_tags: string | null;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  created_at: Date;
+  mined_at: Date;
+}
+
 @Injectable()
 export class TechTrendRepository {
   constructor(
@@ -51,6 +65,51 @@ export class TechTrendRepository {
     return await this.repository.findOneBy({ id });
   }
 
+  // 임베딩 기반 연관 아티클 조회
+  async findRelatedByEmbedding(params: {
+    excludeId: number;
+    embedding: number[];
+    limit: number;
+  }): Promise<RelatedTrendRow[]> {
+    const { excludeId, embedding, limit } = params;
+    const vectorString = `[${embedding.join(',')}]`;
+    const distanceThreshold = this.configService.get<number>(
+      'RELATED_DISTANCE_THRESHOLD',
+      0.45,
+    );
+
+    const sql = `
+      SELECT
+        trend.id,
+        trend.source,
+        trend.title,
+        trend.short_summary,
+        trend.link_url,
+        trend.technical_tags,
+        trend.view_count,
+        trend.like_count,
+        trend.comment_count,
+        trend.created_at,
+        trend.mined_at
+      FROM tbl_tech_trends trend
+      WHERE
+        trend.id != $2
+        AND trend.embedding IS NOT NULL
+        AND trend.embedding <=> CAST($1 AS vector) <= $3
+      ORDER BY
+        trend.embedding <=> CAST($1 AS vector) ASC,
+        trend.created_at DESC,
+        trend.id DESC
+      LIMIT $4
+    `;
+
+    return this.repository.query(sql, [
+      vectorString,
+      excludeId,
+      distanceThreshold,
+      limit,
+    ]);
+  }
 
   // 기본 목록 조회
   async listTrends(params: ListTrendsParams): Promise<SearchResult> {
@@ -87,24 +146,34 @@ export class TechTrendRepository {
 
     switch (sort) {
       case 'MINED_DESC':
-        qb.orderBy('trend.mined_at', 'DESC')
-          .addOrderBy('trend.created_at', 'DESC');
+        qb.orderBy('trend.mined_at', 'DESC').addOrderBy(
+          'trend.created_at',
+          'DESC',
+        );
         break;
       case 'MINED_ASC':
-        qb.orderBy('trend.mined_at', 'ASC')
-          .addOrderBy('trend.created_at', 'ASC');
+        qb.orderBy('trend.mined_at', 'ASC').addOrderBy(
+          'trend.created_at',
+          'ASC',
+        );
         break;
       case 'LIKE_DESC':
-        qb.orderBy('trend.like_count', 'DESC', 'NULLS LAST')
-          .addOrderBy('trend.created_at', 'DESC');
+        qb.orderBy('trend.like_count', 'DESC', 'NULLS LAST').addOrderBy(
+          'trend.created_at',
+          'DESC',
+        );
         break;
       case 'VIEW_DESC':
-        qb.orderBy('trend.view_count', 'DESC', 'NULLS LAST')
-          .addOrderBy('trend.created_at', 'DESC');
+        qb.orderBy('trend.view_count', 'DESC', 'NULLS LAST').addOrderBy(
+          'trend.created_at',
+          'DESC',
+        );
         break;
       case 'COMMENT_DESC':
-        qb.orderBy('trend.comment_count', 'DESC', 'NULLS LAST')
-          .addOrderBy('trend.created_at', 'DESC');
+        qb.orderBy('trend.comment_count', 'DESC', 'NULLS LAST').addOrderBy(
+          'trend.created_at',
+          'DESC',
+        );
         break;
       case 'CREATED_ASC':
         qb.orderBy('trend.created_at', 'ASC');
@@ -129,8 +198,9 @@ export class TechTrendRepository {
     const { page, limit, search, source, isNew, sort = 'RELEVANCE' } = params;
     const offset = (page - 1) * limit;
 
-    let orderByClause = 'ORDER BY relevance_score DESC, trend.created_at DESC, trend.id DESC';
-    
+    let orderByClause =
+      'ORDER BY relevance_score DESC, trend.created_at DESC, trend.id DESC';
+
     switch (sort) {
       case 'CREATED_DESC':
         orderByClause = 'ORDER BY trend.created_at DESC, trend.id DESC';
@@ -139,23 +209,29 @@ export class TechTrendRepository {
         orderByClause = 'ORDER BY trend.created_at ASC, trend.id ASC';
         break;
       case 'MINED_DESC':
-        orderByClause = 'ORDER BY trend.mined_at DESC, trend.created_at DESC, trend.id DESC';
+        orderByClause =
+          'ORDER BY trend.mined_at DESC, trend.created_at DESC, trend.id DESC';
         break;
       case 'MINED_ASC':
-        orderByClause = 'ORDER BY trend.mined_at ASC, trend.created_at ASC, trend.id ASC';
+        orderByClause =
+          'ORDER BY trend.mined_at ASC, trend.created_at ASC, trend.id ASC';
         break;
       case 'LIKE_DESC':
-        orderByClause = 'ORDER BY trend.like_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
+        orderByClause =
+          'ORDER BY trend.like_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
         break;
       case 'VIEW_DESC':
-        orderByClause = 'ORDER BY trend.view_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
+        orderByClause =
+          'ORDER BY trend.view_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
         break;
       case 'COMMENT_DESC':
-        orderByClause = 'ORDER BY trend.comment_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
+        orderByClause =
+          'ORDER BY trend.comment_count DESC NULLS LAST, trend.created_at DESC, trend.id DESC';
         break;
       case 'RELEVANCE':
       default:
-        orderByClause = 'ORDER BY relevance_score DESC, trend.created_at DESC, trend.id DESC';
+        orderByClause =
+          'ORDER BY relevance_score DESC, trend.created_at DESC, trend.id DESC';
         break;
     }
 
@@ -212,15 +288,21 @@ export class TechTrendRepository {
   }
 
   // 키워드 + 벡터 하이브리드 검색 (RRF 스코어로 고정 정렬)
-  async searchHybrid(params: SearchParams & { vector: number[] }): Promise<SearchResult> {
+  async searchHybrid(
+    params: SearchParams & { vector: number[] },
+  ): Promise<SearchResult> {
     const { page, limit, search, source, isNew, vector } = params;
     const offset = (page - 1) * limit;
 
     const vectorString = `[${vector.join(',')}]`;
-    const candidateLimit =
-      this.configService.get<number>('SEARCH_CANDIDATE_LIMIT', 50); // 각 상위 50개의 결과만 반영
-    const distanceThreshold =
-      this.configService.get<number>('VECTOR_DISTANCE_THRESHOLD', 0.35); // 벡터 거리 임계치
+    const candidateLimit = this.configService.get<number>(
+      'SEARCH_CANDIDATE_LIMIT',
+      50,
+    ); // 각 상위 50개의 결과만 반영
+    const distanceThreshold = this.configService.get<number>(
+      'VECTOR_DISTANCE_THRESHOLD',
+      0.35,
+    ); // 벡터 거리 임계치
     const rrfK = 60;
 
     const commonWhere = `
@@ -293,7 +375,16 @@ export class TechTrendRepository {
       SELECT COUNT(*)::int AS total_count FROM rrf;
     `;
 
-    const dataParams = [search, vectorString, source, isNew, candidateLimit, rrfK, limit, offset];
+    const dataParams = [
+      search,
+      vectorString,
+      source,
+      isNew,
+      candidateLimit,
+      rrfK,
+      limit,
+      offset,
+    ];
     const countParams = [search, vectorString, source, isNew, candidateLimit];
 
     const [dataRows, countRows] = await Promise.all([
@@ -301,11 +392,17 @@ export class TechTrendRepository {
       this.repository.query(countSql, countParams),
     ]);
 
-    return { data: dataRows, totalCount: Number(countRows?.[0]?.total_count || 0) };
+    return {
+      data: dataRows,
+      totalCount: Number(countRows?.[0]?.total_count || 0),
+    };
   }
 
   // DB 중복 검증용 source_id 조회
-  async findExistingSourceIds(source: string, sourceIds: string[]): Promise<Set<string>> {
+  async findExistingSourceIds(
+    source: string,
+    sourceIds: string[],
+  ): Promise<Set<string>> {
     if (sourceIds.length === 0) return new Set();
 
     const rows = await this.repository.find({
