@@ -12,6 +12,10 @@ import { RedisService } from 'redis/redis.service';
 import { ConfigService } from '@nestjs/config';
 import { Semaphore } from 'async-mutex';
 
+// 프롬프트 빌더 Import
+import { buildFilterBatchPrompt } from './prompts/filter-batch.prompt';
+import { buildSummarizeContentPrompt } from './prompts/summarize-content.prompt';
+
 interface ExecuteWithRetryParams<T> {
   operation: () => Promise<T>;
   context: string;
@@ -32,7 +36,7 @@ export class AiService {
 
   private groq: Groq;
   private gemini: GoogleGenAI;
-  
+
   private readonly groqModelName: string;
   private readonly embeddingModelName: string;
   private readonly embeddingTtlSeconds: number;
@@ -54,16 +58,14 @@ export class AiService {
     });
   }
 
-  // [공통 재시도 로직] 객체 파라미터 적용
+  // [공통 재시도 로직]
   private async executeWithRetry<T>(params: ExecuteWithRetryParams<T>): Promise<T> {
     const { operation, context, maxRetries = 3, baseDelayMs = 2000 } = params;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // 성공: 해당 함수 실행 후 그대로 반환
         return await operation();
       } catch (error: any) {
-        // 실패: 재시도 로직
         if (attempt === maxRetries) {
           this.logger.error(`[Retry:${context}] 최종 실패 (재시도 ${attempt}회 초과) | error=${error.message}`);
           throw error;
@@ -71,34 +73,18 @@ export class AiService {
 
         const delay = baseDelayMs * Math.pow(2, attempt - 1);
         this.logger.warn(`[Retry:${context}] 실패, ${delay}ms 후 재시도 (${attempt}/${maxRetries}) | error=${error.message}`);
-        
+
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
     throw new Error('Unreachable code');
   }
 
-  // AI 평가
+  // AI 필터 평가
   async filterBatchWithAi(params: FilterBatchParams): Promise<string[]> {
     const { items } = params;
 
-    const prompt = `
-    당신은 백엔드 개발자 시각의 IT 트렌드 큐레이터입니다.
-    아래 10개 아티클 목록(제목 및 800자 요약)을 읽고,
-    백엔드/DevOps/CS/개발기술 측면에서 실무에 도움이 되는 가치 있는 글의 ID만 선택하세요.
-
-    [제외 대상]
-    - 수필, 개인 회고, 개발 커리어 고민, 소소한 일상
-    - 단순 광고/홍보성 글
-
-    [평가 대상]
-    ${JSON.stringify(items, null, 2)}
-
-    [응답 포맷 (JSON)]
-    {
-      "valuable_ids": [12345, 67890]
-    }
-    `;
+    const prompt = buildFilterBatchPrompt(params);
 
     this.logger.debug(`[AI:Groq-Filter] 가치 평가 API 호출 | 대상=${items.length}개, 프롬프트길이=${prompt.length}자`);
 
@@ -136,28 +122,7 @@ export class AiService {
   async summarizeContentWithAi(params: SummarizeContentParams): Promise<FinalSummaryResult | null> {
     const { title, content } = params;
 
-    const prompt = `
-    당신은 IT 트렌드 전문 에디터입니다.
-    제공된 개발 블로그 글을 한국인 백엔드 개발자 시각으로 요약하세요.
-
-    [글 정보]
-    - 영문 제목: ${title}
-    - 본문 내용: ${content}
-
-    [작성 가이드]
-    1. title: 기술 직관적인 한국어 제목
-    2. short_summary: 핵심 내용 친근한 존댓말(~해요) 3문장 배열
-    3. long_summary: 원문 내용에 따라서 300자~1000자 이상의 상세 마크다운 요약 (구체적인 개념, 기술 스택, 실습, 주요 제약 조건 포함)
-    4. tags: 주요 기술 스택 쉼표 구분 문자열 (예: "NestJS, Redis")
-
-    [응답 포맷 (JSON)]
-    {
-      "title": "가공된 한국어 제목",
-      "short_summary": ["문장 1", "문장 2", "문장 3"],
-      "long_summary": "마크다운 본문 요약...",
-      "tags": "NestJS, TypeORM"
-    }
-    `;
+    const prompt = buildSummarizeContentPrompt(params);
 
     this.logger.debug(`[AI:Groq-Summarize] 요약 API 호출 | 제목="${title.substring(0, 30)}...", 본문길이=${content.length}자`);
 
@@ -250,17 +215,15 @@ export class AiService {
     const lockKey = `lock:${cacheKey}`;
 
     try {
-      // 캐시 확인
       const cachedVector = await this.redisService.getCache<number[]>({ key: cacheKey });
       if (cachedVector && Array.isArray(cachedVector) && cachedVector.length > 0) {
         this.logger.debug(`[Embedding Cache HIT] key="${cacheKey}"`);
         return cachedVector;
       }
 
-      // 락 획득 시도
       const lockValue = await this.redisService.acquireLock({
         key: lockKey,
-        ttlMs: 10000, // 10초
+        ttlMs: 10000,
       });
 
       if (!lockValue) {
@@ -268,10 +231,9 @@ export class AiService {
         return await this.waitForCache({ cacheKey });
       }
 
-      // 락 획득 성공
       try {
         this.logger.debug(`[Embedding Cache MISS] API 호출 진행 (락 선점) key="${cacheKey}"`);
-        
+
         const vectors = await this.semaphore.runExclusive(async () => {
           return await this.vectorEmbeddingWithAi({
             texts: [normalizedQuery],
@@ -291,7 +253,6 @@ export class AiService {
 
         return vector;
       } finally {
-        // 락 반납
         await this.redisService.releaseLock({
           key: lockKey,
           value: lockValue,

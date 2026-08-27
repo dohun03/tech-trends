@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tech Miner | 테크 트렌드 요약</title>
+  <!-- GitHub 마크다운 스타일 CSS CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
   <style>
     :root {
       --bg-color: #f8f9fa;
@@ -542,7 +544,63 @@
       flex: 1;
       font-size: 15px;
       line-height: 1.7;
-      white-space: pre-wrap;
+    }
+
+    /* GitHub Markdown 본문 커스텀 및 테마 일치화 */
+    .modal-body.markdown-body {
+      background-color: transparent;
+      color: var(--text-color);
+      font-family: inherit;
+    }
+
+    .modal-body.markdown-body h2 {
+      font-size: 18px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+      margin-top: 20px;
+      margin-bottom: 12px;
+      color: var(--primary);
+    }
+
+    .modal-body.markdown-body h2:first-child {
+      margin-top: 0;
+    }
+
+    .modal-body.markdown-body h3 {
+      font-size: 16px;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .modal-body.markdown-body p {
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+
+    .modal-body.markdown-body ul,
+    .modal-body.markdown-body ol {
+      padding-left: 20px;
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+
+    .modal-body.markdown-body li {
+      margin-bottom: 4px;
+    }
+
+    .modal-body.markdown-body code {
+      background-color: rgba(175, 184, 193, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 85%;
+    }
+
+    .modal-body.markdown-body pre {
+      background-color: #f6f8fa;
+      border-radius: 6px;
+      padding: 14px;
+      overflow: auto;
+      margin-bottom: 12px;
     }
 
     .modal-footer {
@@ -729,7 +787,7 @@
         </div>
       </div>
 
-      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-body markdown-body" id="modalBody"></div>
       
       <!-- 연관 아티클 섹션 -->
       <div class="related-section" id="modalRelatedSection" style="display:none;">
@@ -743,6 +801,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Marked.js 마크다운 파서 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
   <script>
     const API_BASE_URL = '/api/trends';
@@ -1228,7 +1289,15 @@
     // 모달 내용 렌더링
     function renderModalContent(item) {
       document.getElementById('modalTitle').textContent = item.title;
-      document.getElementById('modalBody').textContent = item.long_summary || '내용 없음';
+      
+      const rawMarkdown = item.long_summary || '상세 요약 내용이 없습니다.';
+      const modalBodyEl = document.getElementById('modalBody');
+      if (typeof marked !== 'undefined' && marked.parse) {
+        modalBodyEl.innerHTML = marked.parse(rawMarkdown);
+      } else {
+        modalBodyEl.textContent = rawMarkdown;
+      }
+      modalBodyEl.scrollTop = 0;
       
       els.modalMetrics.innerHTML = `
         <div class="metrics-container">
@@ -1253,6 +1322,10 @@
     function closeModal(updateHistory = true) {
       document.getElementById('detailModal').classList.remove('show');
       document.body.classList.remove('modal-open');
+      const modalBodyEl = document.getElementById('modalBody');
+      if (modalBodyEl) {
+        modalBodyEl.scrollTop = 0;
+      }
       els.modalRelatedList.innerHTML = '';
       state.modalHistory = [];
       updateModalBackButton();

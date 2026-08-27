@@ -67,12 +67,14 @@ export class StackOverflowScraper implements IArticleScraper {
     }
   }
 
-  // 질문 상세 정보 수집
+  // 본문 상세 정보 수집
   async getArticleDetails(
     articleId: string,
   ): Promise<ArticleDetails | null> {
     try {
       const startTime = Date.now();
+
+      // 본문 요청
       const response = await axios.get(
         `${this.STACKOVERFLOW_API_URL}/questions/${articleId}`,
         {
@@ -90,11 +92,48 @@ export class StackOverflowScraper implements IArticleScraper {
       const question = response.data?.items?.[0];
       if (!question) return null;
 
-      const content = question.body?.trim();
-      if (!content) return null;
+      const rawQuestionBody = question.body?.trim();
+      if (!rawQuestionBody) return null;
+
+      // 2. 해당 질문의 답변 목록 수집
+      let bestAnswerText = '등록된 답변이 없거나 유효한 답변이 없습니다.';
+      try {
+        const answersResponse = await axios.get(
+          `${this.STACKOVERFLOW_API_URL}/questions/${articleId}/answers`,
+          {
+            params: {
+              site: 'stackoverflow',
+              filter: 'withbody',
+              sort: 'votes',
+              order: 'desc',
+              pagesize: 5,
+            },
+            headers: this.HEADERS,
+            timeout: 5000,
+          },
+        );
+
+        const answers = answersResponse.data?.items;
+        if (Array.isArray(answers) && answers.length > 0) {
+          const acceptedAnswer = answers.find((a: any) => a.is_accepted);
+          const targetAnswer = acceptedAnswer || answers[0];
+
+          if (targetAnswer?.body) {
+            bestAnswerText = this.stripHtml(targetAnswer.body);
+          }
+        }
+      } catch (answerError: any) {
+        this.logger.warn(
+          `[Scraper:StackOverflow] 답변 수집 실패 (질문 본문만 활용) | articleId=${articleId}`,
+        );
+      }
+
+      // 질문 + 답변 병합 및 HTML 정제
+      const cleanQuestionBody = this.stripHtml(rawQuestionBody);
+      const combinedContent = this.formatContent(cleanQuestionBody, bestAnswerText);
 
       return {
-        content,
+        content: combinedContent,
         view_count: question.view_count ?? null,
         like_count: question.score ?? null, // Upvote 점수
         comment_count: question.answer_count ?? null, // 답변 수
@@ -104,5 +143,27 @@ export class StackOverflowScraper implements IArticleScraper {
 
       return null;
     }
+  }
+
+  // 본문 및 답변 포맷팅
+  private formatContent(questionBody: string, answerText: string): string {
+    return [
+      `[질문 또는 본문(Problem)]\n${questionBody}`,
+      `[해결 답변 (Solution)]\n${answerText}`,
+    ].join('\n\n');
+  }
+
+  // HTML 태그 제거 및 코드 블록 보존
+  private stripHtml(html: string): string {
+    return html
+      .replace(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '\n```\n$1\n```\n')
+      .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
   }
 }

@@ -51,6 +51,7 @@ describe('StackOverflowScraper', () => {
 
   describe('getArticleDetails', () => {
     it('성공: 질문 본문, 조회수, 점수, 답변 수를 정확히 맵핑해야 한다', async () => {
+      // 1번째 질문 상세 요청 Mock
       mockedAxios.get.mockResolvedValueOnce({
         data: {
           items: [
@@ -64,10 +65,23 @@ describe('StackOverflowScraper', () => {
         },
       });
 
+      // 2번째 답변 목록 요청 Mock
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          items: [
+            {
+              is_accepted: true,
+              body: '<p>Use NestJS CLI with <code>nest new</code> command.</p>',
+              score: 20,
+            },
+          ],
+        },
+      });
+
       const result = await scraper.getArticleDetails('101');
 
       expect(result).toEqual({
-        content: '<p>How to use NestJS?</p>',
+        content: `[질문 또는 본문(Problem)]\nHow to use NestJS?\n\n[해결 답변 (Solution)]\nUse NestJS CLI with \`nest new\` command.`,
         view_count: 150,
         like_count: 12,
         comment_count: 2,
