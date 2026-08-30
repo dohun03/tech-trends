@@ -66,13 +66,29 @@ export class AiService {
       try {
         return await operation();
       } catch (error: any) {
-        if (attempt === maxRetries) {
-          this.logger.error(`[Retry:${context}] 최종 실패 (재시도 ${attempt}회 초과) | error=${error.message}`);
+        const status = error?.status || error?.response?.status || error?.statusCode;
+        const isNonRetryable = status && status >= 400 && status < 500 && status !== 429;
+        if (isNonRetryable) {
+          this.logger.error(
+            `[Retry:${context}] 복구 불가능한 에러 (Status: ${status}). 즉시 중단합니다. | error=${error.message}`,
+          );
           throw error;
         }
 
-        const delay = baseDelayMs * Math.pow(2, attempt - 1);
-        this.logger.warn(`[Retry:${context}] 실패, ${delay}ms 후 재시도 (${attempt}/${maxRetries}) | error=${error.message}`);
+        if (attempt === maxRetries) {
+          this.logger.error(
+            `[Retry:${context}] 최종 실패 (Status: ${status || 'Unknown'}, ${attempt}회 초과) | error=${error.message}`,
+          );
+          throw error;
+        }
+
+        // 재시도 대상 에러 (429, 5xx)
+        const multiplier = status === 429 ? 3 : 2;
+        const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
+
+        this.logger.warn(
+          `[Retry:${context}] 일시적 오류 (Status: ${status || 'Unknown'}). ${delay}ms 후 재시도 (${attempt}/${maxRetries}) | error=${error.message}`,
+        );
 
         await new Promise((resolve) => setTimeout(resolve, delay));
       }

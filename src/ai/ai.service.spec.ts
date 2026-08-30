@@ -7,12 +7,10 @@ describe('AiService', () => {
   let service: AiService;
   let redisService: jest.Mocked<RedisService>;
 
-  // 내부적으로 사용될 가짜 Groq, Gemini 객체
   let mockGroqCreate: jest.Mock;
   let mockGeminiEmbed: jest.Mock;
 
   beforeEach(async () => {
-    // RedisService Mocking
     const mockRedisServiceProvider = {
       provide: RedisService,
       useValue: {
@@ -23,7 +21,6 @@ describe('AiService', () => {
       },
     };
 
-    // ConfigService Mocking
     const mockConfigServiceProvider = {
       provide: ConfigService,
       useValue: {
@@ -46,7 +43,6 @@ describe('AiService', () => {
     service = module.get<AiService>(AiService);
     redisService = module.get(RedisService);
 
-    // 외부 API (Groq, Gemini) Mocking
     mockGroqCreate = jest.fn();
     (service as any).groq = {
       chat: { completions: { create: mockGroqCreate } },
@@ -57,9 +53,9 @@ describe('AiService', () => {
       models: { embedContent: mockGeminiEmbed },
     };
 
-    // setTimeout 대기 시간 무시
+    // setTimeout 모킹 (비동기 루프 보장)
     jest.spyOn(global, 'setTimeout').mockImplementation((cb: any) => {
-      cb();
+      setImmediate(cb);
       return 0 as any;
     });
   });
@@ -70,40 +66,47 @@ describe('AiService', () => {
 
   describe('filterBatchWithAi', () => {
     it('성공: AI 응답을 JSON으로 파싱하여 valuable_ids를 반환해야 한다', async () => {
-      // 리턴 값 정의
       const mockResponse = {
         choices: [{ message: { content: '{"valuable_ids": [1, 2, 3]}' } }],
       };
       mockGroqCreate.mockResolvedValue(mockResponse);
 
-      // 실행
       const result = await service.filterBatchWithAi({ items: [] as any });
 
-      // 검증
       expect(result).toEqual([1, 2, 3]);
       expect(mockGroqCreate).toHaveBeenCalledTimes(1);
     });
 
-    it('실패: 3번 재시도 후에도 실패하면 에러를 던져야 한다', async () => {
-      // 리턴 값 정의
-      mockGroqCreate.mockRejectedValue(new Error('API 에러'));
+    it('실패: 400 Bad Request 에러 발생 시 재시도 없이 즉시 에러를 던져야 한다', async () => {
+      const error400: any = new Error('Invalid Request');
+      error400.status = 400;
 
-      // 실행 / 검증
-      await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow('API 에러');
-      expect(mockGroqCreate).toHaveBeenCalledTimes(3); // 3번 시도했는지 검증
+      mockGroqCreate.mockRejectedValue(error400);
+
+      await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow('Invalid Request');
+      expect(mockGroqCreate).toHaveBeenCalledTimes(1); // 재시도 없이 1번만 호출
+    });
+
+    it('실패: 429 Rate Limit 발생 시 3번 재시도 후 에러를 던져야 한다', async () => {
+      const error429: any = new Error('Rate Limit Exceeded');
+      error429.status = 429;
+
+      mockGroqCreate.mockRejectedValue(error429);
+
+      await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow('Rate Limit Exceeded');
+      expect(mockGroqCreate).toHaveBeenCalledTimes(3); // 3번 재시도 확인
     });
   });
 
   describe('summarizeContentWithAi', () => {
     it('성공: 응답을 파싱하여 정해진 포맷으로 반환해야 한다 (short_summary 배열 처리 등)', async () => {
-      // 리턴 값 정의
       const mockResponse = {
         choices: [
           {
             message: {
               content: JSON.stringify({
                 title: '테스트 제목',
-                short_summary: '문장 하나뿐인 요약', // 배열이 아닌 문자열로 올 경우
+                short_summary: '문장 하나뿐인 요약',
                 long_summary: '긴 요약입니다.',
                 tags: ['NestJS', 'Redis'],
               }),
@@ -113,18 +116,16 @@ describe('AiService', () => {
       };
       mockGroqCreate.mockResolvedValue(mockResponse);
 
-      // 실행
       const result = await service.summarizeContentWithAi({
         title: '원본 제목',
         content: '내용',
       });
 
-      // 검증
       expect(result).toEqual({
         title: '테스트 제목',
-        short_summary: ['문장 하나뿐인 요약'], // 배열로 강제 변환되었는지 검증
+        short_summary: ['문장 하나뿐인 요약'],
         long_summary: '긴 요약입니다.',
-        tags: 'NestJS, Redis', // 문자열로 조인되었는지 검증
+        tags: 'NestJS, Redis',
       });
     });
   });
@@ -163,8 +164,8 @@ describe('AiService', () => {
       const result = await service.embedSearchQuery(query);
 
       expect(result).toEqual(cachedVector);
-      expect(mockGeminiEmbed).not.toHaveBeenCalled(); 
-      expect(redisService.acquireLock).not.toHaveBeenCalled(); 
+      expect(mockGeminiEmbed).not.toHaveBeenCalled();
+      expect(redisService.acquireLock).not.toHaveBeenCalled();
     });
 
     it('시나리오 B: 캐시가 없고 락을 획득하면, API를 호출하고 캐시를 저장한 뒤 락을 해제해야 한다', async () => {
@@ -190,23 +191,26 @@ describe('AiService', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce([0.2, 0.2, 0.2]);
 
-      redisService.acquireLock.mockResolvedValue(null); 
+      redisService.acquireLock.mockResolvedValue(null);
 
       const result = await service.embedSearchQuery(query);
 
       expect(result).toEqual([0.2, 0.2, 0.2]);
-      expect(mockGeminiEmbed).not.toHaveBeenCalled(); 
-      expect(redisService.setCache).not.toHaveBeenCalled(); 
+      expect(mockGeminiEmbed).not.toHaveBeenCalled();
+      expect(redisService.setCache).not.toHaveBeenCalled();
     });
 
     it('시나리오 D: API 호출 중 에러가 발생하면 에러를 던지지 않고 null을 반환해야 한다', async () => {
       redisService.getCache.mockResolvedValue(null);
       redisService.acquireLock.mockResolvedValue('mock-lock');
-      mockGeminiEmbed.mockRejectedValue(new Error('Gemini API quota exceeded'));
+      
+      const error500: any = new Error('Gemini API quota exceeded');
+      error500.status = 500;
+      mockGeminiEmbed.mockRejectedValue(error500);
 
       const result = await service.embedSearchQuery(query);
 
-      expect(result).toBeNull(); 
+      expect(result).toBeNull();
     });
   });
 });
