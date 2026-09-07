@@ -1,13 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Groq from 'groq-sdk';
 import { GoogleGenAI } from '@google/genai';
-import {
-  BatchEvaluationResult,
-  FilterBatchParams,
-  FinalSummaryResult,
-  SummarizeContentParams,
-  VectorEmbeddingParams,
-} from './interfaces/ai.interface';
+import { BatchEvaluationResult, FilterBatchParams, FinalSummaryResult, SummarizeContentParams, VectorEmbeddingParams } from './interfaces/ai.interface';
 import { RedisService } from 'redis/redis.service';
 import { ConfigService } from '@nestjs/config';
 import { Semaphore } from 'async-mutex';
@@ -38,6 +32,7 @@ export class AiService {
   private gemini: GoogleGenAI;
 
   private readonly groqModelName: string;
+  private readonly maxCompletionTokens: number;
   private readonly embeddingModelName: string;
   private readonly embeddingTtlSeconds: number;
 
@@ -45,16 +40,17 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {
-    this.groqModelName = this.configService.getOrThrow('GROQ_MODEL');
-    this.embeddingModelName = this.configService.getOrThrow('GEMINI_EMBEDDING_MODEL');
-    this.embeddingTtlSeconds = Number(this.configService.get('EMBEDDING_TTL_SECONDS')) || 2592000;
+    this.groqModelName = this.configService.getOrThrow<string>('ai.groq.model');
+    this.maxCompletionTokens = this.configService.get<number>('ai.groq.maxCompletionTokens') ?? 1000;
+    this.embeddingModelName = this.configService.getOrThrow<string>('ai.gemini.embeddingModel');
+    this.embeddingTtlSeconds = Number(this.configService.get<number>('ai.gemini.embeddingTtlSeconds')) || 2592000;
 
     this.groq = new Groq({
-      apiKey: this.configService.get<string>('GROQ_API_KEY'),
+      apiKey: this.configService.get<string>('ai.groq.apiKey'),
     });
 
     this.gemini = new GoogleGenAI({
-      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      apiKey: this.configService.get<string>('ai.gemini.apiKey'),
     });
   }
 
@@ -113,7 +109,7 @@ export class AiService {
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
             temperature: 0.1,
-            max_completion_tokens: 4096,
+            max_completion_tokens: this.maxCompletionTokens,
             reasoning_effort: 'none',
           });
 
@@ -151,7 +147,7 @@ export class AiService {
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
             temperature: 0.2,
-            max_completion_tokens: 4096,
+            max_completion_tokens: this.maxCompletionTokens,
             reasoning_effort: 'none',
           });
 

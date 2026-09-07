@@ -19,9 +19,10 @@ export const buildSummarizeContentPrompt = (params: SummarizeContentParams): str
   [작성 가이드 및 필드별 규칙]
   1. title: 기술 직관적인 한국어 제목
   2. short_summary: 핵심 내용을 친근한 존댓말(~해요 체) 3문장 배열로 작성
-  3. long_summary: 아래 마크다운 구조를 준수하여 300자~1000자 이상의 상세 요약 작성
+  3. long_summary: 아래 마크다운 구조를 준수하여 300자~500자 내외로 간결하게 상세 요약 작성
     - 원문에 실무 주의사항이나 장단점 내용이 부족하다면 해당 항목에 "원문 내 별도 언급 없음"으로 명시하거나 관련 기술의 일반적인 주의점 1줄로 대체할 것.
   4. tags: 주요 기술 스택을 쉼표로 구분한 문자열
+  5. 전체 응답(제목·요약·태그 포함)이 1000토큰을 넘지 않도록, 필요한 경우 long_summary 길이를 줄여라.
 
   [long_summary 마크다운 구조]
   ## 기술 개요 및 배경

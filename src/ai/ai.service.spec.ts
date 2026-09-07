@@ -25,12 +25,13 @@ describe('AiService', () => {
       provide: ConfigService,
       useValue: {
         getOrThrow: jest.fn((key: string) => {
-          if (key === 'GROQ_MODEL') return 'llama3-8b-8192';
-          if (key === 'GEMINI_EMBEDDING_MODEL') return 'text-embedding-004';
+          if (key === 'ai.groq.model') return 'llama3-8b-8192';
+          if (key === 'ai.gemini.embeddingModel') return 'text-embedding-004';
           return 'mock-key';
         }),
         get: jest.fn((key: string) => {
-          if (key === 'EMBEDDING_TTL_SECONDS') return 3600;
+          if (key === 'ai.groq.maxCompletionTokens') return 1000;
+          if (key === 'ai.gemini.embeddingTtlSeconds') return 3600;
           return 'mock-key';
         }),
       },
@@ -75,6 +76,19 @@ describe('AiService', () => {
 
       expect(result).toEqual([1, 2, 3]);
       expect(mockGroqCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('성공: 설정된 maxCompletionTokens(1000)이 API 호출 파라미터에 전달되어야 한다', async () => {
+      const mockResponse = {
+        choices: [{ message: { content: '{"valuable_ids": []}' } }],
+      };
+      mockGroqCreate.mockResolvedValue(mockResponse);
+
+      await service.filterBatchWithAi({ items: [] as any });
+
+      expect(mockGroqCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ max_completion_tokens: 1000 }),
+      );
     });
 
     it('실패: 400 Bad Request 에러 발생 시 재시도 없이 즉시 에러를 던져야 한다', async () => {

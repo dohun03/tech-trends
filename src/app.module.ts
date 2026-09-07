@@ -1,4 +1,3 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -9,6 +8,7 @@ import { TrendsModule } from 'trends/trends.module';
 import { BullModule } from '@nestjs/bullmq';
 import { WinstonModule } from 'nest-winston';
 import { winstonLoggerOptions } from './common/config/logger.config';
+import aiConfig from './ai/config/ai.config';
 
 @Module({
   imports: [
@@ -17,6 +17,7 @@ import { winstonLoggerOptions } from './common/config/logger.config';
     ConfigModule.forRoot({
       isGlobal: true, 
       envFilePath: '.env',
+      load: [aiConfig],
     }),
 
     // BullMQ Redis 연결 기본 설정
