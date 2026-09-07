@@ -9,6 +9,7 @@ describe('AiService', () => {
 
   let mockGroqCreate: jest.Mock;
   let mockGeminiEmbed: jest.Mock;
+  let setTimeoutSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     const mockRedisServiceProvider = {
@@ -55,7 +56,7 @@ describe('AiService', () => {
     };
 
     // setTimeout 모킹 (비동기 루프 보장)
-    jest.spyOn(global, 'setTimeout').mockImplementation((cb: any) => {
+    setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((cb: any) => {
       setImmediate(cb);
       return 0 as any;
     });
@@ -109,6 +110,35 @@ describe('AiService', () => {
 
       await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow('Rate Limit Exceeded');
       expect(mockGroqCreate).toHaveBeenCalledTimes(3); // 3번 재시도 확인
+    });
+
+    it('실패: 구조적 429(Request too large)는 재시도 없이 즉시 에러를 던져야 한다', async () => {
+      const error429: any = new Error('Request too large, please reduce max_completion_tokens');
+      error429.status = 429;
+
+      mockGroqCreate.mockRejectedValue(error429);
+
+      await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow(
+        'Request too large, please reduce max_completion_tokens',
+      );
+      expect(mockGroqCreate).toHaveBeenCalledTimes(1); // 재시도 없이 1번만 호출
+    });
+
+    it('성공: 일시적 429의 retry-after 헤더를 반영해 해당 시간만큼 대기해야 한다', async () => {
+      const error429: any = new Error('Rate limit reached');
+      error429.status = 429;
+      error429.headers = {
+        get: (name: string) => (name === 'retry-after' ? '9.36' : undefined),
+      };
+
+      mockGroqCreate.mockRejectedValue(error429);
+
+      await expect(service.filterBatchWithAi({ items: [] as any })).rejects.toThrow(
+        'Rate limit reached',
+      );
+
+      const delays = setTimeoutSpy.mock.calls.map((call) => call[1] as number);
+      expect(delays[0]).toBe(9360); // 9.36초 → 9360ms 반영 확인
     });
   });
 

@@ -63,6 +63,16 @@ export class AiService {
         return await operation();
       } catch (error: any) {
         const status = error?.status || error?.response?.status || error?.statusCode;
+        const msg = String(error?.message ?? error?.error?.message ?? '');
+
+        const isStructuralOverflow = status === 429 && msg.includes('Request too large');
+        if (isStructuralOverflow) {
+          this.logger.error(
+            `[Retry:${context}] 구조적 한도 초과(Request too large). 재시도 중단. | error=${error.message}`,
+          );
+          throw error;
+        }
+
         const isNonRetryable = status && status >= 400 && status < 500 && status !== 429;
         if (isNonRetryable) {
           this.logger.error(
@@ -78,9 +88,11 @@ export class AiService {
           throw error;
         }
 
-        // 재시도 대상 에러 (429, 5xx)
+        // 재시도 대상 에러 (일시적 429, 5xx)
         const multiplier = status === 429 ? 3 : 2;
-        const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
+        const fallbackDelay = baseDelayMs * Math.pow(multiplier, attempt - 1);
+        const retryAfterMs = this.extractRetryAfterMs(error);
+        const delay = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : fallbackDelay;
 
         this.logger.warn(
           `[Retry:${context}] 일시적 오류 (Status: ${status || 'Unknown'}). ${delay}ms 후 재시도 (${attempt}/${maxRetries}) | error=${error.message}`,
@@ -90,6 +102,33 @@ export class AiService {
       }
     }
     throw new Error('Unreachable code');
+  }
+
+  // 일시적 429 응답의 재시도 대기 시간(ms) 추출 (retry-after / x-ratelimit-reset-tokens)
+  private extractRetryAfterMs(error: any): number | null {
+    const headers = error?.headers ?? error?.response?.headers ?? error?.error?.headers;
+    if (!headers) return null;
+
+    const get = (name: string): string | undefined => {
+      if (typeof headers.get === 'function') return headers.get(name);
+      return headers[name] ?? headers[name.toLowerCase()];
+    };
+
+    // retry-after(초): Groq "Please try again in Xs" 값
+    const retryAfter = get('retry-after');
+    if (retryAfter) {
+      const seconds = parseFloat(retryAfter);
+      if (!Number.isNaN(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
+    }
+
+    // x-ratelimit-reset-tokens(초): 리셋까지 남은 시간
+    const resetTokens = get('x-ratelimit-reset-tokens');
+    if (resetTokens) {
+      const seconds = parseFloat(resetTokens);
+      if (!Number.isNaN(seconds) && seconds > 0) return Math.ceil(seconds * 1000);
+    }
+
+    return null;
   }
 
   // AI 필터 평가
