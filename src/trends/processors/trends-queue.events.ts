@@ -2,13 +2,18 @@ import { OnQueueEvent, QueueEventsHost, QueueEventsListener } from '@nestjs/bull
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { ScrapeJobResult } from '../interfaces/scraper.interface';
+import { ScrapeJobResult, SavedArticleInfo } from '../interfaces/scraper.interface';
+import { TechTrendRepository } from '../repositories/tech-trend.repository';
+import { getTodayStartUtc } from '../../common/utils/time.util';
 
 @QueueEventsListener('trend-scraper-queue')
 export class TrendQueueEventsListener extends QueueEventsHost {
   private readonly logger = new Logger(TrendQueueEventsListener.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly techTrendRepository: TechTrendRepository,
+  ) {
     super();
   }
 
@@ -28,22 +33,35 @@ export class TrendQueueEventsListener extends QueueEventsHost {
 
     const baseUrl = this.configService.get<string>('CLIENT_URL', 'http://localhost:3000');
 
+    // 최종 완료 시점에 "오늘 이 소스로 저장된 전체"를 DB에서 조회해 노출한다.
+    const sourceName = result?.sourceName ?? null;
+    let todaySavedArticles: SavedArticleInfo[] = [];
+    if (sourceName) {
+      try {
+        todaySavedArticles = await this.techTrendRepository.findSavedSince(sourceName, getTodayStartUtc());
+      } catch (error: any) {
+        this.logger.error(`[Queue Success] 오늘 누적 아티클 조회 실패 | source=${sourceName}, error=${error.message}`);
+        todaySavedArticles = [];
+      }
+    }
+    const savedCount = todaySavedArticles.length;
+
     // 관리자용 모니터링 알림 메시지
     let adminMessage = `✅ **[BullMQ 스크래퍼 성공]**\n- Job ID: \`${event.jobId}\``;
-    if (result) {
-      adminMessage += `\n- 수집 출처: \`${result.sourceName}\``;
-      adminMessage += `\n- 저장 건수: **${result.savedCount}개**`;
+    if (sourceName) {
+      adminMessage += `\n- 수집 출처: \`${sourceName}\``;
+      adminMessage += `\n- 저장 건수(오늘 누계): **${savedCount}개**`;
     }
 
-    // 유저용 아티클 알림 메시지
+    // 유저용 아티클 알림 메시지 (오늘 누계)
     let userMessage = '';
-    if (result && result.savedArticles && result.savedArticles.length > 0) {
-      userMessage = `📢 **[${result.sourceName}] 새로운 트렌드 아티클이 도착했습니다!**\n`;
+    if (sourceName && todaySavedArticles.length > 0) {
+      userMessage = `📢 **[${sourceName}] 새로운 트렌드 아티클이 도착했습니다!**\n`;
 
-      for (let idx = 0; idx < result.savedArticles.length; idx++) {
-        const article = result.savedArticles[idx];
+      for (let idx = 0; idx < todaySavedArticles.length; idx++) {
+        const article = todaySavedArticles[idx];
         const detailUrl = `${baseUrl}/?id=${article.id}`;
-        
+
         // 디스코드 문법 파괴 기호에 백슬래시(\) 이스케이프 적용
         const safeTitle = article.title
           .replace(/[\r\n]+/g, ' ')
@@ -57,7 +75,7 @@ export class TrendQueueEventsListener extends QueueEventsHost {
         const appendStr = `\n${idx + 1}. [${safeTitle}](<${detailUrl}>)`;
 
         if (userMessage.length + appendStr.length > 1800) {
-          userMessage += `\n\n...외 **${result.savedArticles.length - idx}개**의 아티클이 더 있습니다.`;
+          userMessage += `\n\n...외 **${todaySavedArticles.length - idx}개**의 아티클이 더 있습니다.`;
           break;
         }
 

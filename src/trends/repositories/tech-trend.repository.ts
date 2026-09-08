@@ -4,6 +4,7 @@ import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { TechTrend } from '../entities/tech-trend.entity';
 import { ConfigService } from '@nestjs/config';
 import { SortOption } from '../dto/list-trends-query.dto';
+import { SavedArticleInfo } from '../interfaces/scraper.interface';
 
 interface ListTrendsParams {
   page: number;
@@ -426,6 +427,30 @@ export class TechTrendRepository {
         mined_at: MoreThanOrEqual(sinceDate),
       },
     });
+  }
+
+  // 오늘(지정 시각 이후) 해당 소스로 저장된 아티클 목록 조회 (디스코드 알림용)
+  async findSavedSince(source: string, sinceDate: Date): Promise<SavedArticleInfo[]> {
+    const rows = await this.repository.find({
+      where: {
+        source,
+        mined_at: MoreThanOrEqual(sinceDate),
+      },
+      select: {
+        id: true,
+        source_id: true,
+        title: true,
+        link_url: true,
+      },
+      order: { mined_at: 'ASC' },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      sourceId: row.source_id,
+      title: row.title,
+      url: row.link_url,
+    }));
   }
 
   // DB 저장
