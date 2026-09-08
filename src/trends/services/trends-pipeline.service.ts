@@ -10,7 +10,6 @@ import { FinalSummaryResult } from 'ai/interfaces/ai.interface';
 import { ScraperFactory } from '../scrapers/scraper.factory';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { RedisService } from 'redis/redis.service';
 
 interface SummarizedArticle {
   article: Article;
@@ -28,7 +27,6 @@ export class TrendsPipelineService {
 
   private readonly TARGET_SAVE_COUNT: number;
   private readonly BATCH_SIZE: number;
-  private readonly REDIS_LOCK_TTL_MS: number;
   private readonly AI_DELAY_SECONDS: number;
   private readonly TEXT_SNIPPET_LENGTH: number;
   private readonly TEXT_CONTENT_LENGTH: number;
@@ -38,13 +36,11 @@ export class TrendsPipelineService {
     private readonly scraperQueue: Queue,
     private readonly aiService: AiService,
     private readonly techTrendRepository: TechTrendRepository,
-    private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly scraperFactory: ScraperFactory,
   ) {
     this.TARGET_SAVE_COUNT = Number(this.configService.get('SCRAPER_TARGET_SAVE_COUNT', 5));
     this.BATCH_SIZE = Number(this.configService.get('SCRAPER_BATCH_SIZE', 10));
-    this.REDIS_LOCK_TTL_MS = Number(this.configService.get('SCRAPER_REDIS_LOCK_TTL_MS', 600000));
     this.AI_DELAY_SECONDS = Number(this.configService.get('SCRAPER_AI_DELAY_SECONDS', 3));
     this.TEXT_SNIPPET_LENGTH = Number(this.configService.get('SCRAPER_TEXT_SNIPPET_LENGTH', 600));
     this.TEXT_CONTENT_LENGTH = Number(this.configService.get('SCRAPER_TEXT_CONTENT_LENGTH', 5000));
@@ -53,21 +49,18 @@ export class TrendsPipelineService {
   // 스크래퍼들을 큐에 등록
   public async dispatchAllScrapersToQueue(): Promise<void> {
     for (const sourceName of this.scraperFactory.getAllSourceNames()) {
-      const lockKey = `lock:scraper:${sourceName}`;
-      const lockValue = await this.redisService.acquireLock({
-        key: lockKey,
-        ttlMs: this.REDIS_LOCK_TTL_MS,
-      });
+      const jobId = `${sourceName}-${this.todayString()}`; // 예: devto-2026-09-05
 
-      if (!lockValue) {
-        this.logger.warn(`[Queue] ${sourceName} 작업이 이미 진행 중입니다. 중복 요청 무시.`);
+      const existing = await this.scraperQueue.getJob(jobId);
+      if (existing) {
+        const state = await existing.getState();
+        this.logger.log(`[Queue] ${jobId} 기존 Job 존재(state=${state}). 재등록 생략.`);
         continue;
       }
 
-      const jobId = sourceName;
       await this.scraperQueue.add(
         'scrape-articles',
-        { sourceName, lockValue },
+        sourceName,
         {
           jobId,
           attempts: 3,
@@ -77,8 +70,18 @@ export class TrendsPipelineService {
         },
       );
 
-      this.logger.log(`[Queue] ${sourceName} 작업 신규 등록 완료 (jobId: ${jobId})`);
+      this.logger.log(`[Queue] ${jobId} 작업 신규 등록 완료`);
     }
+  }
+
+  // YYYY-MM-DD 날짜 문자열 반환
+  private todayString(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   }
 
   // Worker가 큐에서 작업을 꺼내어 실행할 때 호출
@@ -267,13 +270,17 @@ export class TrendsPipelineService {
     const articleDetailsMap = new Map<string, ArticleDetails>();
 
     for (const id of articleIds) {
-      const details = await scraper.getArticleDetails(id);
+      try {
+        const details = await scraper.getArticleDetails(id);
 
-      if (details?.content) {
-        articleDetailsMap.set(id, details);
-        this.logger.debug(`[Pipeline] 본문 수집 완료 | articleId=${id}`);
-      } else {
-        this.logger.warn(`[Pipeline] 본문 수집 실패: 내용 없음 | articleId=${id}`);
+        if (details?.content) {
+          articleDetailsMap.set(id, details);
+          this.logger.debug(`[Pipeline] 본문 수집 완료 | articleId=${id}`);
+        } else {
+          this.logger.warn(`[Pipeline] 본문 수집 실패: 내용 없음 | articleId=${id}`);
+        }
+      } catch (error: any) {
+        this.logger.error(`[Pipeline] 본문 수집 실패 | articleId=${id}, error=${error.message}`);
       }
     }
 

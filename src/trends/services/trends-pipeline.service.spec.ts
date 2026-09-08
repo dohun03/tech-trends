@@ -6,6 +6,7 @@ import { TechTrendRepository } from '../repositories/tech-trend.repository';
 import { DevToScraper } from '../scrapers/devto.scraper';
 import { GeekNewsScraper } from '../scrapers/geek-news.scraper';
 import { StackOverflowScraper } from '../scrapers/stackoverflow.scraper';
+import { ScraperFactory } from '../scrapers/scraper.factory';
 import { Article, ArticleDetails } from '../interfaces/scraper.interface';
 import { AiService } from '../../ai/ai.service';
 import { RedisService } from 'redis/redis.service';
@@ -15,6 +16,7 @@ describe('TrendsPipelineService', () => {
   let devToScraper: jest.Mocked<DevToScraper>;
   let repository: jest.Mocked<TechTrendRepository>;
   let aiService: jest.Mocked<AiService>;
+  let scraperQueue: { add: jest.Mock; getJob: jest.Mock; process: jest.Mock };
 
   const mockArticle: Article = {
     id: '101',
@@ -37,7 +39,7 @@ describe('TrendsPipelineService', () => {
         TrendsPipelineService,
         {
           provide: getQueueToken('trend-scraper-queue'),
-          useValue: { add: jest.fn(), process: jest.fn() },
+          useValue: { add: jest.fn(), process: jest.fn(), getJob: jest.fn() },
         },
         {
           provide: TechTrendRepository,
@@ -91,6 +93,7 @@ describe('TrendsPipelineService', () => {
             getArticleDetails: jest.fn(),
           },
         },
+        ScraperFactory,
       ],
     }).compile();
 
@@ -98,10 +101,7 @@ describe('TrendsPipelineService', () => {
     devToScraper = module.get(DevToScraper);
     repository = module.get(TechTrendRepository);
     aiService = module.get(AiService);
-
-    if (pipelineService['scraperMap']) {
-      pipelineService['scraperMap'].set('DEVTO', devToScraper);
-    }
+    scraperQueue = module.get(getQueueToken('trend-scraper-queue'));
   });
 
   afterEach(() => {
@@ -128,7 +128,7 @@ describe('TrendsPipelineService', () => {
       repository.saveTrend.mockResolvedValue({ id: 1, source_id: '101' } as any);
 
       // 실행
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(1);
       expect(result.savedArticles[0].sourceId).toBe('101');
@@ -139,14 +139,14 @@ describe('TrendsPipelineService', () => {
   describe('치명적 에러 발생 시 전체 실패(Throw) 검증', () => {
     it('[미등록스크래퍼-실패] 등록되지 않은 스크래퍼 소스명 요청 시 예외를 던져야 한다', async () => {
       await expect(pipelineService.executeScraperByName('INVALID_SOURCE')).rejects.toThrow(
-        '[Pipeline] 등록되지 않은 스크래퍼 소스입니다: INVALID_SOURCE',
+        '[ScraperFactory] 등록되지 않은 스크래퍼 소스입니다: INVALID_SOURCE',
       );
     });
 
     it('[목록수집-실패] 스크래퍼 목록 조회 중 에러 발생 시 예외를 던져야 한다', async () => {
       devToScraper.getArticles.mockRejectedValueOnce(new Error('Network Connection Timeout'));
 
-      await expect(pipelineService.executeScraperByName('DEVTO')).rejects.toThrow(
+      await expect(pipelineService.executeScraperByName('dev.to')).rejects.toThrow(
         'Network Connection Timeout',
       );
     });
@@ -154,7 +154,7 @@ describe('TrendsPipelineService', () => {
     it('[AI필터-실패] AI 가치 평가 API 에러 발생 시 예외를 던져야 한다', async () => {
       aiService.filterBatchWithAi.mockRejectedValueOnce(new Error('Groq Filter API Error'));
 
-      await expect(pipelineService.executeScraperByName('DEVTO')).rejects.toThrow(
+      await expect(pipelineService.executeScraperByName('dev.to')).rejects.toThrow(
         'Groq Filter API Error',
       );
     });
@@ -170,7 +170,7 @@ describe('TrendsPipelineService', () => {
 
       aiService.vectorEmbeddingWithAi.mockRejectedValueOnce(new Error('Embedding Service Down'));
 
-      await expect(pipelineService.executeScraperByName('DEVTO')).rejects.toThrow(
+      await expect(pipelineService.executeScraperByName('dev.to')).rejects.toThrow(
         'Embedding Service Down',
       );
     });
@@ -186,7 +186,7 @@ describe('TrendsPipelineService', () => {
 
       aiService.vectorEmbeddingWithAi.mockResolvedValue([]);
 
-      await expect(pipelineService.executeScraperByName('DEVTO')).rejects.toThrow(
+      await expect(pipelineService.executeScraperByName('dev.to')).rejects.toThrow(
         '[Pipeline] 임베딩 개수 불일치!',
       );
     });
@@ -211,7 +211,7 @@ describe('TrendsPipelineService', () => {
       aiService.vectorEmbeddingWithAi.mockResolvedValue([[0.1, 0.2]]);
       repository.saveTrend.mockResolvedValue({ id: 2, source_id: '102' } as any);
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(1);
       expect(result.savedArticles[0].sourceId).toBe('102');
@@ -234,7 +234,7 @@ describe('TrendsPipelineService', () => {
       aiService.vectorEmbeddingWithAi.mockResolvedValue([[0.1, 0.2]]);
       repository.saveTrend.mockResolvedValue({ id: 2, source_id: '102' } as any);
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(1);
       expect(result.savedArticles[0].sourceId).toBe('102');
@@ -256,7 +256,7 @@ describe('TrendsPipelineService', () => {
         .mockRejectedValueOnce(new Error('DB Unique Constraint Error'))
         .mockResolvedValueOnce({ id: 2, source_id: '102' } as any);
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(1);
       expect(result.savedArticles[0].sourceId).toBe('102');
@@ -267,7 +267,7 @@ describe('TrendsPipelineService', () => {
     it('[수집결과0건] 스크래퍼가 가져온 글이 없으면 savedCount 0을 반환해야 한다', async () => {
       devToScraper.getArticles.mockResolvedValue([]);
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(0);
       expect(aiService.filterBatchWithAi).not.toHaveBeenCalled();
@@ -277,7 +277,7 @@ describe('TrendsPipelineService', () => {
       devToScraper.getArticles.mockResolvedValue([mockArticle]);
       repository.findExistingSourceIds.mockResolvedValue(new Set(['101']));
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(0);
       expect(aiService.filterBatchWithAi).not.toHaveBeenCalled();
@@ -289,10 +289,53 @@ describe('TrendsPipelineService', () => {
       devToScraper.getArticleDetails.mockResolvedValue(mockArticleDetails);
       aiService.filterBatchWithAi.mockResolvedValue([]);
 
-      const result = await pipelineService.executeScraperByName('DEVTO');
+      const result = await pipelineService.executeScraperByName('dev.to');
 
       expect(result.savedCount).toBe(0);
       expect(aiService.summarizeContentWithAi).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dispatchAllScrapersToQueue', () => {
+    it('날짜 기반 jobId({source}-YYYY-MM-DD)로 작업을 등록해야 한다', async () => {
+      scraperQueue.getJob.mockResolvedValue(undefined);
+
+      await pipelineService.dispatchAllScrapersToQueue();
+
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+
+      // 소스 3개 모두 {source}-{YYYY-MM-DD} 형태로 등록
+      expect(scraperQueue.add).toHaveBeenCalledTimes(3);
+      expect(scraperQueue.add).toHaveBeenCalledWith(
+        'scrape-articles',
+        'dev.to',
+        expect.objectContaining({ jobId: `dev.to-${today}` }),
+      );
+      expect(scraperQueue.add).toHaveBeenCalledWith(
+        'scrape-articles',
+        'geeknews',
+        expect.objectContaining({ jobId: `geeknews-${today}` }),
+      );
+      expect(scraperQueue.add).toHaveBeenCalledWith(
+        'scrape-articles',
+        'stackoverflow',
+        expect.objectContaining({ jobId: `stackoverflow-${today}` }),
+      );
+    });
+
+    it('기존 Job이 존재하면 add()를 호출하지 않고 재등록을 생략해야 한다', async () => {
+      const existingJob = { getState: jest.fn().mockResolvedValue('failed') };
+      scraperQueue.getJob.mockResolvedValue(existingJob);
+
+      await pipelineService.dispatchAllScrapersToQueue();
+
+      expect(scraperQueue.getJob).toHaveBeenCalledTimes(3);
+      expect(scraperQueue.add).not.toHaveBeenCalled();
     });
   });
 });
