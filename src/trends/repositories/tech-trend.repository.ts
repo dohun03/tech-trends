@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { TechTrend } from '../entities/tech-trend.entity';
 import { ConfigService } from '@nestjs/config';
 import { SortOption } from '../dto/list-trends-query.dto';
@@ -416,6 +416,16 @@ export class TechTrendRepository {
     });
 
     return new Set(rows.map((row) => row.source_id));
+  }
+
+  // 오늘(지정 시각 이후) 해당 소스로 이미 저장된 개수 조회 (재시도 시 목표치 재계산 기준)
+  async countSavedSince(source: string, sinceDate: Date): Promise<number> {
+    return this.repository.count({
+      where: {
+        source,
+        mined_at: MoreThanOrEqual(sinceDate),
+      },
+    });
   }
 
   // DB 저장

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiService } from '../../ai/ai.service';
 import { chunkArray } from '../../common/utils/array.util';
 import { sanitizeAndFilter } from '../../common/utils/text.util';
-import { delaySeconds } from '../../common/utils/time.util';
+import { delaySeconds, getTodayDateString, getTodayStartUtc } from '../../common/utils/time.util';
 import { TechTrendRepository } from '../repositories/tech-trend.repository';
 import { Article, ArticleDetails, IArticleScraper, SavedArticleInfo, ScrapeJobResult } from '../interfaces/scraper.interface';
 import { FinalSummaryResult } from 'ai/interfaces/ai.interface';
@@ -49,7 +49,7 @@ export class TrendsPipelineService {
   // 스크래퍼들을 큐에 등록
   public async dispatchAllScrapersToQueue(): Promise<void> {
     for (const sourceName of this.scraperFactory.getAllSourceNames()) {
-      const jobId = `${sourceName}-${this.todayString()}`; // 예: devto-2026-09-05
+      const jobId = `${sourceName}-${getTodayDateString()}`; // 예: devto-2026-09-05
 
       const existing = await this.scraperQueue.getJob(jobId);
       if (existing) {
@@ -72,16 +72,6 @@ export class TrendsPipelineService {
 
       this.logger.log(`[Queue] ${jobId} 작업 신규 등록 완료`);
     }
-  }
-
-  // YYYY-MM-DD 날짜 문자열 반환
-  private todayString(): string {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
   }
 
   // Worker가 큐에서 작업을 꺼내어 실행할 때 호출
@@ -107,10 +97,23 @@ export class TrendsPipelineService {
 
   // 스크래퍼 단위 처리
   private async processSource(scraper: IArticleScraper): Promise<ScrapeJobResult> {
-    let totalSavedCount = 0;
+    // 오늘(Asia/Seoul) 이 소스로 이미 저장된 개수를 기준선으로 사용 → 재시도 시 목표치 오버 방지
+    const savedBaseline = await this.techTrendRepository.countSavedSince(
+      scraper.sourceName,
+      getTodayStartUtc(),
+    );
+
+    if (savedBaseline >= this.TARGET_SAVE_COUNT) {
+      this.logger.log(
+        `[Pipeline] ${scraper.sourceName} 오늘 목표(${this.TARGET_SAVE_COUNT}) 이미 달성(기존 저장=${savedBaseline}). 스킵.`,
+      );
+      return { sourceName: scraper.sourceName, savedCount: 0, savedArticles: [] };
+    }
+
+    let newlySavedCount = 0;
     const savedArticles: SavedArticleInfo[] = [];
 
-    this.logger.log(`[Pipeline] ${scraper.sourceName} 수집 시작 | targetGoal=${this.TARGET_SAVE_COUNT}, batchSize=${this.BATCH_SIZE}`);
+    this.logger.log(`[Pipeline] ${scraper.sourceName} 수집 시작 | 기존저장=${savedBaseline}, targetGoal=${this.TARGET_SAVE_COUNT}, batchSize=${this.BATCH_SIZE}`);
 
     try {
       // 외부 소스에서 아티클 목록 수집
@@ -139,27 +142,30 @@ export class TrendsPipelineService {
       for (let index = 0; index < batches.length; index++) {
         const batch = batches[index];
 
-        if (totalSavedCount >= this.TARGET_SAVE_COUNT) {
-          this.logger.log(`[Pipeline] ${scraper.sourceName} 목표 수량 달성 | saved=${totalSavedCount}/${this.TARGET_SAVE_COUNT}`);
+        const totalSoFar = savedBaseline + newlySavedCount;
+
+        if (totalSoFar >= this.TARGET_SAVE_COUNT) {
+          this.logger.log(`[Pipeline] ${scraper.sourceName} 목표 수량 달성 | saved=${totalSoFar}/${this.TARGET_SAVE_COUNT}`);
           break;
         }
 
-        const remainingQuota = this.TARGET_SAVE_COUNT - totalSavedCount;
+        const remainingQuota = this.TARGET_SAVE_COUNT - totalSoFar;
 
         this.logger.debug(
           `[Pipeline] [${scraper.sourceName}] 배치 (${index + 1}/${batches.length}) 진행 중 | 대상 ${batch.length}개 | 목표 잔여: ${remainingQuota}개:\n` +
           batch.map((a) => `  - [ID: ${a.id}] ${a.title}`).join('\n')
         );
 
+        // 배치 작업 시작
         const batchResult = await this.processBatch(batch, scraper, remainingQuota);
 
-        totalSavedCount += batchResult.savedCount;
+        newlySavedCount += batchResult.savedCount;
         savedArticles.push(...batchResult.savedArticles);
 
-        this.logger.log(`[Pipeline] [${scraper.sourceName}] 배치 (${index + 1}/${batches.length}) 저장 완료 | 이번 배치 저장: ${batchResult.savedCount}개 | 누적 저장: ${totalSavedCount}/${this.TARGET_SAVE_COUNT}개`);
+        this.logger.log(`[Pipeline] [${scraper.sourceName}] 배치 (${index + 1}/${batches.length}) 저장 완료 | 이번 배치 저장: ${batchResult.savedCount}개 | 누적 저장: ${totalSoFar + batchResult.savedCount}/${this.TARGET_SAVE_COUNT}개`);
       }
 
-      this.logger.log(`[Pipeline] ${scraper.sourceName} 처리 완료 | saved=${totalSavedCount}/${this.TARGET_SAVE_COUNT}`);
+      this.logger.log(`[Pipeline] ${scraper.sourceName} 처리 완료 | 이번 실행 저장=${newlySavedCount}개 (기존포함 총 ${savedBaseline + newlySavedCount}/${this.TARGET_SAVE_COUNT})`);
     } catch (error: any) {
       this.logger.error(`[Pipeline] ${scraper.sourceName} 처리 실패 | error=${error.message}`, error.stack);
       throw error;
@@ -167,7 +173,7 @@ export class TrendsPipelineService {
 
     return {
       sourceName: scraper.sourceName,
-      savedCount: totalSavedCount,
+      savedCount: newlySavedCount,
       savedArticles,
     };
   }
@@ -181,21 +187,16 @@ export class TrendsPipelineService {
     // 본문 확보
     const articleIds = batch.map((article) => String(article.id));
 
-    const articleDetailsMap = await this.fetchBatchDetailsMap(
-      scraper,
-      articleIds,
-    );
+    const articleDetailsMap = await this.fetchBatchDetailsMap(scraper, articleIds);
 
-    const validArticles = batch.filter((article) =>
-      articleDetailsMap.has(String(article.id)),
-    );
-
-    this.logger.debug(`[Pipeline] [${scraper.sourceName}] 본문 수집 성공: ${validArticles.length}/${batch.length}개`);
-
+    const validArticles = batch.filter((article) => articleDetailsMap.has(String(article.id)));
+    
     if (validArticles.length === 0) {
       this.logger.warn(`[Pipeline] [${scraper.sourceName}] 유효 본문 없음`);
       return { savedCount: 0, savedArticles: [] };
     }
+
+    this.logger.debug(`[Pipeline] [${scraper.sourceName}] 본문 수집 성공: ${validArticles.length}/${batch.length}개`);
 
     // AI 가치 평가
     const valuableArticles = await this.selectValuableArticles({
@@ -262,7 +263,7 @@ export class TrendsPipelineService {
     return newArticles;
   }
 
-  // 배치 내 아티클 본문을 병렬로 수집
+  // 배치 내 아티클 본문 순차적으로 수집
   private async fetchBatchDetailsMap(
     scraper: IArticleScraper,
     articleIds: string[],
@@ -343,10 +344,7 @@ export class TrendsPipelineService {
         break;
       }
 
-      const details = articleDetailsMap.get(
-        String(article.id),
-      );
-
+      const details = articleDetailsMap.get(String(article.id));
       if (!details?.content) {
         continue;
       }

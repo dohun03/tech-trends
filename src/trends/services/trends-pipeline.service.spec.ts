@@ -9,7 +9,6 @@ import { StackOverflowScraper } from '../scrapers/stackoverflow.scraper';
 import { ScraperFactory } from '../scrapers/scraper.factory';
 import { Article, ArticleDetails } from '../interfaces/scraper.interface';
 import { AiService } from '../../ai/ai.service';
-import { RedisService } from 'redis/redis.service';
 
 describe('TrendsPipelineService', () => {
   let pipelineService: TrendsPipelineService;
@@ -46,11 +45,8 @@ describe('TrendsPipelineService', () => {
           useValue: {
             findExistingSourceIds: jest.fn(),
             saveTrend: jest.fn(),
+            countSavedSince: jest.fn(),
           },
-        },
-        {
-          provide: RedisService,
-          useValue: { acquireLock: jest.fn() },
         },
         {
           provide: ConfigService,
@@ -112,6 +108,7 @@ describe('TrendsPipelineService', () => {
     devToScraper.getArticles.mockResolvedValue([mockArticle]);
     repository.findExistingSourceIds.mockResolvedValue(new Set());
     devToScraper.getArticleDetails.mockResolvedValue(mockArticleDetails);
+    repository.countSavedSince.mockResolvedValue(0);
   });
 
   describe('정상 파이프라인 실행', () => {
@@ -336,6 +333,45 @@ describe('TrendsPipelineService', () => {
 
       expect(scraperQueue.getJob).toHaveBeenCalledTimes(3);
       expect(scraperQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('목표치 재계산 (DB 기준)', () => {
+    it('[목표기달성] 오늘 이미 목표치만큼 저장돼 있으면 스크래핑 자체를 하지 않고 savedCount 0을 반환해야 한다', async () => {
+      repository.countSavedSince.mockResolvedValue(5); // TARGET_SAVE_COUNT = 5
+
+      const result = await pipelineService.executeScraperByName('dev.to');
+
+      expect(result.savedCount).toBe(0);
+      expect(devToScraper.getArticles).not.toHaveBeenCalled();
+    });
+
+    it('[목표치부분달성] 오늘 3개 저장돼 있으면 이번 실행은 2개만 채우고 멈춰야 한다', async () => {
+      repository.countSavedSince.mockResolvedValue(3);
+
+      const articles: Article[] = [
+        { ...mockArticle, id: '101' },
+        { ...mockArticle, id: '102' },
+        { ...mockArticle, id: '103' },
+        { ...mockArticle, id: '104' },
+      ];
+      devToScraper.getArticles.mockResolvedValue(articles);
+      repository.findExistingSourceIds.mockResolvedValue(new Set());
+      devToScraper.getArticleDetails.mockResolvedValue(mockArticleDetails);
+      aiService.filterBatchWithAi.mockResolvedValue(['101', '102', '103', '104']);
+      aiService.summarizeContentWithAi.mockResolvedValue({
+        title: '요약 제목',
+        short_summary: ['요약 1'],
+        long_summary: '상세 요약',
+        tags: 'NestJS',
+      });
+      aiService.vectorEmbeddingWithAi.mockResolvedValue([[0.1], [0.2]]);
+      repository.saveTrend.mockResolvedValue({ id: 1, source_id: '101' } as any);
+
+      const result = await pipelineService.executeScraperByName('dev.to');
+
+      expect(result.savedCount).toBe(2); // baseline 3 + 2 = 목표 5
+      expect(repository.saveTrend).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -25,7 +25,7 @@
 | 1 | P0 | `feat(ai): Groq 출력 토큰 한도(OTPM) 초과 방지를 위한 설정 정상화` | ai.service.ts, ai.config.ts, summarize-content.prompt.ts, app.module.ts, .env |
 | 2 | P1 | `fix(ai): Groq 429 에러 구조적/일시적 분류에 따른 재시도 분기` | ai.service.ts |
 | 3 | P2 | `refactor(trends): 날짜 기반 jobId 도입 및 스크래퍼 Redis 락 제거` | trends-pipeline.service.ts, trends.worker.ts |
-| 4 | P3 | `feat(trends): 배치 체크포인트 도입으로 재시도 중복 AI 호출 방지` | trends-pipeline.service.ts, redis.service.ts |
+| 4 | P3 | `feat(trends): DB 기준 목표치 재계산으로 재시도 시 목표 초과 수집 방지` | trends-pipeline.service.ts, tech-trend.repository.ts, time.util.ts |
 
 > **P0/P1 분리 판단 근거**: P0은 "설정값·프롬프트 데이터 교정"(동작 변경 없음, 안전), P1은 "재시도 제어 흐름 로직 변경"(단위 테스트 신규 필요)로 성격이 다르고, 각각 독립 검증·롤백이 가능하도록 분리하는 것이 유리합니다.
 
@@ -259,66 +259,67 @@ refactor(trends): 날짜 기반 jobId 도입 및 스크래퍼 Redis 락 제거
 
 ---
 
-## 5. 커밋 4 — P3: 배치 체크포인트 도입
+## 5. 커밋 4 — P3: DB 기준 목표치 재계산
 
 ### 5-1. 목적 (무엇을 위해)
-- **핵심 목적**: BullMQ 재시도(`attempts: 3`) 시 **이미 완료된 배치의 AI 호출(필터/요약/임베딩) 중복 실행을 막아** OTPM 소모·비용·처리시간을 절감.
-- **부수 목적**: 부분 실패 시 정확한 재개 지점을 제공.
+BullMQ 재시도(`attempts: 3`) 시 **목표 저장 개수(예: 5개)를 초과해서 중복 수집·저장하는 문제**를 해결한다.
 
-> ⚠️ P0/P1 적용 후 "Request too large" 실패 자체는 대부분 사라지므로, P3는 **정합성·효율 최적화** 성격이며 우선순위는 P0~P2보다 낮다.
+| # | 문제 | 원인 | 해결 방향 |
+|---|---|---|---|
+| A | 재시도 시 목표 저장 개수를 초과해서 모아버림 | `processSource()`의 저장 개수 카운터가 **런타임 로컬 변수**라 재시도(process() 재호출) 시 0부터 다시 시작 → 이미 DB에 저장된 개수를 모름 | 매 실행 시작 시 **오늘 DB에 실제 저장된 개수**(`mined_at` 기준)를 조회해 기준선으로 사용 |
 
-### 5-2. 기준 (무엇을 기준으로 삼을지) — 설계 확정
+> ⚠️ P0/P1 적용 후 "Request too large" 구조적 실패 자체는 대부분 사라지므로, P3는 **정합성 최적화** 성격이며 우선순위는 P0~P2보다 낮다.
+>
+> ❗ **설계 최종 결정(중간 상태 체크포인트/캐싱 미도입)**: 하루 30개 미만의 소수 글을 수집·요약하는 서비스 특성상, 배치/글 순서가 보장되지 않고 스크래퍼가 반환하는 글 목록 자체가 시시각각 변하므로 체크포인트·캐시의 히트율이 낮고 무의미하다. 따라서 "오늘 몇 개 저장했는지 DB 조회"만으로 목표치를 재계산하고, **중복 여부는 기존 방식 그대로 DB의 글(`source_id`)과 대조**(`excludeExistingArticles`)하여 판별하는 방식을 유지한다. 중간 체크포인트 저장 구조나 AI 요약 캐시는 도입하지 않는다.
+
+### 5-2. 설계 확정
+
 | 항목 | 결정 |
 |---|---|
-| 체크포인트 키 | `checkpoint:{sourceName}:{YYYY-MM-DD}` (날짜 스코프) |
-| TTL | 24시간 (익일 자동 소멸, 최초 실행 = 체크포인트 없음) |
-| 기록 시점 | **각 배치 `saveTrends()` 완료 직후** |
-| 기록 내용 | `{ lastCompletedBatchIndex: number, savedCount: number, savedArticleIds: string[] }` |
-| 읽는 시점 | `processSource()` 반복문 진입 시(각 배치 처리 전) |
-| 재개 기준 | `lastCompletedBatchIndex` 이후 배치부터 처리 |
-| 저장 저장소 | `RedisService.setCache/getCache` 재사용 (별도 메서드 추가 최소화) |
-| 장애 처리 | 체크포인트 기록/조회 실패 시 **best-effort**(무시하고 기존대로 동작) |
+| 목표치 기준 데이터 | `TechTrend.mined_at`(수집 시각, `@CreateDateColumn`) 기준 "오늘(Asia/Seoul) 이 소스로 저장된 행 개수" |
+| 조회 시점 | `processSource()` 진입 시 **최초 1회** (배치 루프 시작 전) |
+| 목표 이미 달성 시 | 스크래핑(`getArticles`)조차 호출하지 않고 즉시 `{ savedCount: 0, savedArticles: [] }` 반환 |
+| `ScrapeJobResult.savedCount` 의미 | 기존과 동일하게 **"이번 실행에서 새로 저장한 개수"** (디스코드 알림 로직 호환 유지). 목표치 판단용 기준선(baseline)과는 별도 변수로 관리 |
+| 중복 판별 | 기존 `excludeExistingArticles()`(DB `source_id` 기반 dedup) 유지 — 별도 변경 없음 |
 
-### 5-3. 경우의 수 분석 (따져봐야 할 시나리오)
-| # | 시나리오 | 기대 동작 |
-|---|---|---|
-| 1 | 배치1 완전 저장, 배치2 필터 실패 → 재시도 | 체크포인트=1 → 배치2부터 재개 |
-| 2 | 배치 내 일부 항목 DB 저장 실패(개별 catch) | 체크포인트는 "배치 완료"로 기록하되, **저장 안 된 항목은 DB에 없으므로 `excludeExistingArticles()`가 재스캔하여 재처리**(체크포인트와 DB dedup 상호보완) |
-| 3 | 필터 성공 후 요약 일부 실패 | 요약 실패 항목은 `summarizeArticles` 내부 catch로 skip → 저장된 항목만 저장 → 체크포인트 기록 |
-| 4 | 임베딩 실패(예외 전파) | 배치 미완료 → 체크포인트 미기록 → 재시도 시 해당 배치부터 재개 |
-| 5 | 체크포인트 미존재(최초 실행/TTL 만료) | 처음부터 처리 (기존 동작과 동일) |
-| 6 | 날짜 변경(익일) | 새 키로 자연 초기화 |
+### 5-3. 변경 대상 파일
 
-### 5-4. 설계 시 주의점
-- `excludeExistingArticles()`(DB 기반 dedup)가 이미 "저장된 항목 스킵"을 담당하므로, 체크포인트는 **"저장 전 단계(AI 호출)의 중복 제거"에 초점**을 둔다.
-- 체크포인트를 아티클 단위로 세밀하게 잡기보다 **배치 단위**로 잡아 복잡도를 통제한다.
-- 체크포인트 미적용(Redis 오류 등) 시에도 기존 "전체 재실행"으로 자연 하향 호환되어 안전해야 한다.
-
-### 5-5. 변경 대상 파일
 | 파일 | 변경 내용 |
 |---|---|
-| `src/redis/redis.service.ts` | (필요 시) 체크포인트용 헬퍼 추가 또는 기존 `setCache/getCache` 그대로 활용 확인 |
-| `src/trends/services/trends-pipeline.service.ts` | `processSource()` 에 체크포인트 조회/재개, 배치 완료 시 기록 로직 추가 |
-| `src/trends/interfaces/scraper.interface.ts` | 체크포인트 타입(`ScrapeCheckpoint`) 정의(필요 시) |
+| `src/common/utils/time.util.ts` | `getTodayDateString()`(YYYY-MM-DD), `getTodayStartUtc()`(Date, Asia/Seoul 기준 오늘 00:00 UTC) 추가. 기존 `trends-pipeline.service.ts`의 private `todayString()`을 `getTodayDateString()`으로 대체(중복 제거) |
+| `src/trends/repositories/tech-trend.repository.ts` | `countSavedSince(source: string, sinceDate: Date): Promise<number>` 신규 — `mined_at >= sinceDate` + `source` 조건으로 `count()` |
+| `src/trends/services/trends-pipeline.service.ts` | `processSource()`: 진입 시 `countSavedSince` 조회 → 기준선(baseline) 계산, 목표 달성 시 조기 반환, 배치 루프의 `remainingQuota`를 `baseline + newlySavedCount` 기준으로 재계산 (변수 `totalSavedCount` → `newlySavedCount`로 의미 재정의) |
+| `src/trends/services/trends-pipeline.service.spec.ts` | `repository.countSavedSince` mock 추가(기본값 0, 기존 테스트 하위호환) + 신규 테스트 2건 |
 
-### 5-6. 테스트 작성/수정
-- `src/trends/services/trends-pipeline.service.spec.ts`:
-  - 체크포인트 존재 시 `lastCompletedBatchIndex` 이후 배치부터 처리하는지 검증.
-  - 체크포인트 기록이 배치 저장 성공 후에만 발생하는지 검증.
-  - Redis 오류 시에도 기존 전체 실행으로 fallback 되는지 검증.
+> `tech-trend.repository.spec.ts`(신규 스펙 파일)는 생성하지 않음 — `countSavedSince`는 TypeORM `count()`를 얇게 감싸는 메서드로, 파이프라인 스펙에서 mock을 통해 사용 여부를 충분히 검증할 수 있어 별도 파일 추가는 과도하다고 판단.
 
-### 5-7. 검증
+### 5-4. 테스트 작성/수정 (`trends-pipeline.service.spec.ts`)
+
+1. `[목표기달성]` 오늘 이미 목표치만큼 저장돼 있으면 스크래핑 자체를 하지 않고 `savedCount: 0` 반환 (`getArticles` 미호출 검증)
+2. `[목표치부분달성]` 오늘 3개 저장돼 있고 목표가 5개면, 이번 실행은 2개만 채우고 멈추는지(`saveTrend` 정확히 2회 호출) 검증
+
+### 5-5. 시나리오별 검증
+
+| # | 시나리오 | 기대 동작 |
+|---|---|---|
+| 1 | 배치1에서 4개 저장 후 배치2에서 실패 → BullMQ 재시도 | 재시도 시 `countSavedSince=4` → `remainingQuota=1`로 시작 → 총 5개에서 멈춤(목표 오버 없음). 저장 완료된 4개는 `excludeExistingArticles`가 걸러 재수집 안 함 |
+| 2 | 목표(5개) 이미 완전 달성 후 재시도 | `countSavedSince=5` → 스크래핑 자체 스킵, `savedCount:0` |
+| 3 | 날짜 변경(익일) | `getTodayStartUtc()` 기준일이 바뀌어 `countSavedSince`가 자연 초기화(0) |
+| 4 | DB 저장 개별 실패(`saveTrends` 내부 catch) | 저장 실패 항목은 `mined_at`이 생성되지 않아 `countSavedSince`에 미반영 → 재시도 시 재저장 시도 가능 |
+
+### 5-6. 검증
 ```bash
 npm run test
 npm run build
 ```
 
-### 5-8. 커밋 메시지
+### 5-7. 커밋 메시지
 ```
-feat(trends): 배치 체크포인트 도입으로 재시도 중복 AI 호출 방지
+feat(trends): DB 기준 목표치 재계산으로 재시도 시 목표 초과 수집 방지
 
-- Redis에 날짜+소스 단위 배치 진행 상태 기록
-- BullMQ 재시도 시 완료된 배치를 스킵해 OTPM/비용/지연 절감
+- 목표 저장 개수를 런타임 로컬 변수 대신 오늘 DB 실제 저장 개수(mined_at 기준)로 재계산
+- BullMQ 재시도 시에도 목표 초과 없이 정확히 목표치까지만 수집·저장
+- 중복 판별은 기존 DB 대조(excludeExistingArticles) 방식 유지
 ```
 
 ---
@@ -328,7 +329,7 @@ feat(trends): 배치 체크포인트 도입으로 재시도 중복 AI 호출 방
 1. `feat(ai): Groq 출력 토큰 한도(OTPM) 초과 방지를 위한 설정 정상화`
 2. `fix(ai): Groq 429 에러 구조적/일시적 분류에 따른 재시도 분기`
 3. `refactor(trends): 날짜 기반 jobId 도입 및 스크래퍼 Redis 락 제거`
-4. `feat(trends): 배치 체크포인트 도입으로 재시도 중복 AI 호출 방지`
+4. `feat(trends): DB 기준 목표치 재계산으로 재시도 시 목표 초과 수집 방지`
 
 ---
 
