@@ -20,7 +20,12 @@ export class TrendsController {
   }
 
   // 검색
-  @Throttle({ global: { limit: 5, ttl: 10000 } })
+  @Throttle({
+    global: {
+      limit: () => Number(process.env.SEARCH_THROTTLE_LIMIT ?? 5),
+      ttl: () => Number(process.env.SEARCH_THROTTLE_TTL ?? 10000),
+    },
+  })
   @Get('search')
   searchTrends(@Query() query: SearchTrendsQueryDto) {
     return this.trendsQueryService.searchTrends(query);
