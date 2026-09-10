@@ -19,6 +19,7 @@ interface ExecuteWithRetryParams<T> {
 
 interface WaitForCacheParams {
   cacheKey: string;
+  lockKey: string;
   maxRetries?: number;
   delayMs?: number;
 }
@@ -279,7 +280,7 @@ export class AiService {
 
       if (!lockValue) {
         this.logger.debug(`[Embedding Lock Waiting] 다른 요청이 캐시 생성 중입니다. key="${cacheKey}"`);
-        return await this.waitForCache({ cacheKey });
+        return await this.waitForCache({ cacheKey, lockKey });
       }
 
       try {
@@ -329,7 +330,7 @@ export class AiService {
 
   // 검색 중복 요청시 대기
   private async waitForCache(params: WaitForCacheParams): Promise<number[] | null> {
-    const { cacheKey, maxRetries = 25, delayMs = 200 } = params;
+    const { cacheKey, lockKey, maxRetries = 25, delayMs = 200 } = params;
 
     for (let i = 0; i < maxRetries; i++) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -338,6 +339,16 @@ export class AiService {
       if (cachedVector && Array.isArray(cachedVector) && cachedVector.length > 0) {
         this.logger.debug(`[Embedding Lock Resolved] 대기 후 캐시 획득 성공! key="${cacheKey}"`);
         return cachedVector;
+      }
+
+      // Early Exit: 선점 요청이 실패하여 락이 해제되었는데 캐시가 아직 없다면,
+      // 더 이상 대기해도 캐시가 생기지 않으므로 즉시 중단하고 FTS 폴백을 유도한다.
+      const lockExists = await this.redisService.exists({ key: lockKey });
+      if (!lockExists) {
+        this.logger.warn(
+          `[Embedding Lock Released] 선점 요청이 실패하여 락이 해제되었습니다. 대기를 중단하고 폴백 처리합니다. key="${cacheKey}"`,
+        );
+        return null;
       }
     }
 

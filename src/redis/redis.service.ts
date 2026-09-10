@@ -106,4 +106,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const { key } = params;
     await this.client.del(key);
   }
+
+  // 특정 키의 존재 여부를 확인합니다.
+  async exists(params: { key: string }): Promise<boolean> {
+    const { key } = params;
+    const result = await this.client.exists(key);
+    return result === 1;
+  }
 }

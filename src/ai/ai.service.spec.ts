@@ -19,6 +19,7 @@ describe('AiService', () => {
         setCache: jest.fn(),
         acquireLock: jest.fn(),
         releaseLock: jest.fn(),
+        exists: jest.fn(),
       },
     };
 
@@ -231,11 +232,12 @@ describe('AiService', () => {
 
     it('시나리오 C: 락 획득에 실패하면, 대기(waitForCache) 후 생성된 캐시를 반환해야 한다', async () => {
       redisService.getCache
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce([0.2, 0.2, 0.2]);
+        .mockResolvedValueOnce(null) // 최초 캐시 조회 (miss)
+        .mockResolvedValueOnce(null) // waitForCache poll 1 (miss)
+        .mockResolvedValueOnce([0.2, 0.2, 0.2]); // poll 2 (hit)
 
       redisService.acquireLock.mockResolvedValue(null);
+      redisService.exists.mockResolvedValue(true); // poll 1에서 락이 여전히 존재 → 계속 대기
 
       const result = await service.embedSearchQuery(query);
 
@@ -255,6 +257,18 @@ describe('AiService', () => {
       const result = await service.embedSearchQuery(query);
 
       expect(result).toBeNull();
+    });
+
+    it('시나리오 E: 락 대기 중 선점 요청이 실패해 락이 해제되면, 최대 대기 없이 즉시 null을 반환해야 한다 (Early Exit)', async () => {
+      redisService.getCache.mockResolvedValue(null); // 캐시는 계속 없음
+      redisService.acquireLock.mockResolvedValue(null); // 락 획득 실패 → 대기 진입
+      redisService.exists.mockResolvedValue(false); // 락이 이미 해제됨 (선점 요청 실패)
+
+      const result = await service.embedSearchQuery(query);
+
+      expect(result).toBeNull();
+      expect(mockGeminiEmbed).not.toHaveBeenCalled();
+      expect(redisService.exists).toHaveBeenCalledWith({ key: `lock:${cacheKey}` });
     });
   });
 });
