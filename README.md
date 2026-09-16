@@ -14,7 +14,7 @@ BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서�
 
 * **진행 기간**: 2026.07 ~ 2026.08
 * **참여 인원**: 1명 (개인 프로젝트)
-* [Live Demo](http://43.203.27.240)
+* **접속 URL**: [https://techtrends.devsystem.fyi](https://techtrends.devsystem.fyi)
 
 ---
 
@@ -251,7 +251,7 @@ GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_API_KEY=
 
 # GROQ 모델명
-GROQ_MODEL=qwen/qwen3.6-27b
+GROQ_MODEL=
 # GROQ 최대 출력 토큰 수 (OTPM=1000 대응)
 GROQ_MAX_COMPLETION_TOKENS=1000
 # GROQ API 키
