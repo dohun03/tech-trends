@@ -27,6 +27,8 @@ import { AddMetricsToTechTrend1786259764774 } from './migrations/1786259764774-A
         ],
         logging: false,
         extra: {
+          max: 5, // 최대 커넥션 수
+          connectionTimeoutMillis: 2000, // 커넥션 획득 대기 타임아웃 (2초)
           options: '-c timezone=Asia/Seoul',
         },
       }),
