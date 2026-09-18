@@ -5,6 +5,7 @@ import { TechTrend } from '../trends/entities/tech-trend.entity';
 import { InitTechTrendSchema1785067830260 } from './migrations/1785067830260-InitTechTrendSchema';
 import { AddTechTrendSearchIndexes1785074539944 } from './migrations/1785074539944-AddTechTrendSearchIndexes';
 import { AddMetricsToTechTrend1786259764774 } from './migrations/1786259764774-AddMetricsToTechTrend';
+import { AddTrendSortIndexes1789888000000 } from './migrations/1789888000000-AddTrendSortIndexes';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AddMetricsToTechTrend1786259764774 } from './migrations/1786259764774-A
           InitTechTrendSchema1785067830260,
           AddTechTrendSearchIndexes1785074539944,
           AddMetricsToTechTrend1786259764774,
+          AddTrendSortIndexes1789888000000,
         ],
         logging: false,
         extra: {

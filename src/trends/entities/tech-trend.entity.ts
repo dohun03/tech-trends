@@ -14,6 +14,9 @@ import {
 @Index('IDX_mined_at', ['mined_at'])
 @Index('IDX_tech_trends_fts', ['search_document'])
 @Index('IDX_tech_trends_embedding', ['embedding'])
+@Index('idx_tech_trends_like_created', ['like_count', 'created_at', 'id'])
+@Index('idx_tech_trends_view_created', ['view_count', 'created_at', 'id'])
+@Index('idx_tech_trends_comment_created', ['comment_count', 'created_at', 'id'])
 export class TechTrend {
   @PrimaryGeneratedColumn()
   id!: number;
