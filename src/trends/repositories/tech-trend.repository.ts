@@ -121,10 +121,8 @@ export class TechTrendRepository {
       .select([
         'trend.id',
         'trend.source',
-        'trend.source_id',
         'trend.title',
         'trend.short_summary',
-        'trend.long_summary',
         'trend.link_url',
         'trend.technical_tags',
         'trend.view_count',
