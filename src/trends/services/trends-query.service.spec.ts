@@ -30,8 +30,12 @@ describe('TrendsQueryService', () => {
 
     const mockTrendsCacheService = {
       getSources: jest.fn(),
-      setSources: jest.fn(),
+      setSources: jest.fn().mockResolvedValue(undefined),
       invalidateSources: jest.fn(),
+      getDetail: jest.fn(),
+      setDetail: jest.fn().mockResolvedValue(undefined),
+      getRelated: jest.fn(),
+      setRelated: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -220,6 +224,18 @@ describe('TrendsQueryService', () => {
       expect(repository.findUniqueSources).toHaveBeenCalledTimes(1);
     });
 
+    it('캐시 저장 실패가 DB 조회 응답을 실패시키지 않아야 한다', async () => {
+      const mockSources = ['dev.to'];
+      trendsCacheService.getSources.mockResolvedValue(null);
+      repository.findUniqueSources.mockResolvedValue(mockSources);
+      trendsCacheService.setSources.mockRejectedValue(new Error('Redis 다운'));
+
+      await expect(service.getUniqueSources()).resolves.toEqual(mockSources);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(trendsCacheService.setSources).toHaveBeenCalledWith(mockSources);
+    });
+
     it('실패: InternalServerErrorException을 던져야 한다', async () => {
       trendsCacheService.getSources.mockResolvedValue(null);
       repository.findUniqueSources.mockRejectedValue(new Error('DB 에러'));
@@ -231,9 +247,27 @@ describe('TrendsQueryService', () => {
   });
 
   describe('getTrendById', () => {
+    it('캐시 HIT 시 DB 조회 없이 detail을 반환해야 한다', async () => {
+      const mockArticle = { id: 1, title: '캐시된 단건' };
+      trendsCacheService.getDetail.mockResolvedValue(mockArticle as any);
+
+      await expect(service.getTrendById(1)).resolves.toEqual(mockArticle);
+      expect(repository.findById).not.toHaveBeenCalled();
+    });
+
+    it('detail 캐시 조회 실패 시 DB로 폴백해야 한다', async () => {
+      const mockArticle = { id: 1, title: 'DB 단건' };
+      trendsCacheService.getDetail.mockRejectedValue(new Error('Redis 다운'));
+      repository.findById.mockResolvedValue(mockArticle as any);
+
+      await expect(service.getTrendById(1)).resolves.toEqual(mockArticle);
+      expect(repository.findById).toHaveBeenCalledWith(1);
+    });
+
     it('성공: ID에 해당하는 아티클 단건을 반환해야 한다', async () => {
       const mockArticle = { id: 1, title: '단건 테스트' };
       repository.findById.mockResolvedValue(mockArticle as any);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       const result = await service.getTrendById(1);
 
@@ -243,6 +277,7 @@ describe('TrendsQueryService', () => {
 
     it('아티클이 존재하지 않을 경우 NotFoundException을 던져야 한다', async () => {
       repository.findById.mockResolvedValue(null);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       await expect(service.getTrendById(999)).rejects.toThrow(
         NotFoundException,
@@ -251,6 +286,7 @@ describe('TrendsQueryService', () => {
 
     it('DB 접근 중 원인 불명의 에러 발생 시 InternalServerErrorException을 던져야 한다', async () => {
       repository.findById.mockRejectedValue(new Error('DB 다운'));
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       await expect(service.getTrendById(1)).rejects.toThrow(
         InternalServerErrorException,
@@ -259,6 +295,15 @@ describe('TrendsQueryService', () => {
   });
 
   describe('getRelatedTrends', () => {
+    it('캐시 HIT 시 detail 및 related DB 조회 없이 반환해야 한다', async () => {
+      const cached = { data: [{ id: 2, title: '캐시된 연관 글' }] };
+      trendsCacheService.getRelated.mockResolvedValue(cached as any);
+
+      await expect(service.getRelatedTrends(1, 5)).resolves.toEqual(cached);
+      expect(repository.findById).not.toHaveBeenCalled();
+      expect(repository.findRelatedByEmbedding).not.toHaveBeenCalled();
+    });
+
     it('성공: embedding이 존재하면 findRelatedByEmbedding을 호출하고 결과를 반환해야 한다', async () => {
       const mockEmbedding = [0.1, 0.2, 0.3];
       const mockArticle = {
@@ -273,6 +318,8 @@ describe('TrendsQueryService', () => {
 
       repository.findById.mockResolvedValue(mockArticle as any);
       repository.findRelatedByEmbedding.mockResolvedValue(mockRelated as any);
+      trendsCacheService.getRelated.mockResolvedValue(null);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       const result = await service.getRelatedTrends(1, 5);
 
@@ -287,6 +334,8 @@ describe('TrendsQueryService', () => {
 
     it('아티클이 존재하지 않을 경우 NotFoundException을 던져야 한다', async () => {
       repository.findById.mockResolvedValue(null);
+      trendsCacheService.getRelated.mockResolvedValue(null);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       await expect(service.getRelatedTrends(999, 5)).rejects.toThrow(
         NotFoundException,
@@ -301,6 +350,8 @@ describe('TrendsQueryService', () => {
         embedding: null,
       };
       repository.findById.mockResolvedValue(mockArticleWithoutEmbedding as any);
+      trendsCacheService.getRelated.mockResolvedValue(null);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       const result = await service.getRelatedTrends(1, 5);
 
@@ -311,6 +362,8 @@ describe('TrendsQueryService', () => {
 
     it('DB 조회 중 에러 발생 시 InternalServerErrorException을 던져야 한다', async () => {
       repository.findById.mockRejectedValue(new Error('DB 에러'));
+      trendsCacheService.getRelated.mockResolvedValue(null);
+      trendsCacheService.getDetail.mockResolvedValue(null);
 
       await expect(service.getRelatedTrends(1, 5)).rejects.toThrow(
         InternalServerErrorException,
