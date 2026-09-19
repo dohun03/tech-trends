@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
+import { startPerfMonitor } from './common/perf/perf-monitor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -36,5 +37,8 @@ async function bootstrap() {
 
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
+
+  // 이벤트 루프/메모리 모니터링 (ENABLE_PERF_LOG=true 일 때만 동작)
+  startPerfMonitor();
 }
 bootstrap();
