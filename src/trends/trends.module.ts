@@ -18,6 +18,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { TrendQueueEventsListener } from './processors/trends-queue.events';
+import { TrendsCacheService } from './cache/trends-cache.service';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { TrendQueueEventsListener } from './processors/trends-queue.events';
     TrendsWorker,
     TrendsScheduler,
     TrendQueueEventsListener,
+    TrendsCacheService,
     ScraperFactory,
     DevToScraper,
     GeekNewsScraper,

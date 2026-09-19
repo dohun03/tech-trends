@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TrendsQueryService } from './trends-query.service';
 import { TechTrendRepository } from '../repositories/tech-trend.repository';
+import { TrendsCacheService } from '../cache/trends-cache.service';
 import { AiService } from 'ai/ai.service';
 import {
   InternalServerErrorException,
@@ -11,6 +12,7 @@ describe('TrendsQueryService', () => {
   let service: TrendsQueryService;
   let repository: jest.Mocked<TechTrendRepository>;
   let aiService: jest.Mocked<AiService>;
+  let trendsCacheService: jest.Mocked<TrendsCacheService>;
 
   beforeEach(async () => {
     const mockRepository = {
@@ -26,17 +28,25 @@ describe('TrendsQueryService', () => {
       embedSearchQuery: jest.fn(),
     };
 
+    const mockTrendsCacheService = {
+      getSources: jest.fn(),
+      setSources: jest.fn(),
+      invalidateSources: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TrendsQueryService,
         { provide: TechTrendRepository, useValue: mockRepository },
         { provide: AiService, useValue: mockAiService },
+        { provide: TrendsCacheService, useValue: mockTrendsCacheService },
       ],
     }).compile();
 
     service = module.get<TrendsQueryService>(TrendsQueryService);
     repository = module.get(TechTrendRepository);
     aiService = module.get(AiService);
+    trendsCacheService = module.get(TrendsCacheService);
   });
 
   afterEach(() => {
@@ -175,8 +185,33 @@ describe('TrendsQueryService', () => {
   });
 
   describe('getUniqueSources', () => {
-    it('성공: 고유 출처 목록을 반환해야 한다', async () => {
+    it('성공: 캐시 HIT 시 DB 조회 없이 캐시값을 반환해야 한다', async () => {
       const mockSources = ['dev.to', 'geeknews', 'stackoverflow'];
+      trendsCacheService.getSources.mockResolvedValue(mockSources);
+
+      const result = await service.getUniqueSources();
+
+      expect(result).toEqual(mockSources);
+      expect(trendsCacheService.getSources).toHaveBeenCalledTimes(1);
+      expect(repository.findUniqueSources).not.toHaveBeenCalled();
+      expect(trendsCacheService.setSources).not.toHaveBeenCalled();
+    });
+
+    it('성공: 캐시 MISS 시 DB 조회 후 캐시를 저장하고 반환해야 한다', async () => {
+      const mockSources = ['dev.to', 'geeknews', 'stackoverflow'];
+      trendsCacheService.getSources.mockResolvedValue(null);
+      repository.findUniqueSources.mockResolvedValue(mockSources);
+
+      const result = await service.getUniqueSources();
+
+      expect(result).toEqual(mockSources);
+      expect(repository.findUniqueSources).toHaveBeenCalledTimes(1);
+      expect(trendsCacheService.setSources).toHaveBeenCalledWith(mockSources);
+    });
+
+    it('캐시 조회 실패 시 DB로 폴백하여 정상 반환해야 한다', async () => {
+      const mockSources = ['dev.to'];
+      trendsCacheService.getSources.mockRejectedValue(new Error('Redis 다운'));
       repository.findUniqueSources.mockResolvedValue(mockSources);
 
       const result = await service.getUniqueSources();
@@ -186,6 +221,7 @@ describe('TrendsQueryService', () => {
     });
 
     it('실패: InternalServerErrorException을 던져야 한다', async () => {
+      trendsCacheService.getSources.mockResolvedValue(null);
       repository.findUniqueSources.mockRejectedValue(new Error('DB 에러'));
 
       await expect(service.getUniqueSources()).rejects.toThrow(

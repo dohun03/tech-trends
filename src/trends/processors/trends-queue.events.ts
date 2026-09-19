@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ScrapeJobResult, SavedArticleInfo } from '../interfaces/scraper.interface';
 import { TechTrendRepository } from '../repositories/tech-trend.repository';
+import { TrendsCacheService } from '../cache/trends-cache.service';
 import { getTodayStartUtc } from '../../common/utils/time.util';
 
 @QueueEventsListener('trend-scraper-queue')
@@ -13,6 +14,7 @@ export class TrendQueueEventsListener extends QueueEventsHost {
   constructor(
     private readonly configService: ConfigService,
     private readonly techTrendRepository: TechTrendRepository,
+    private readonly trendsCacheService: TrendsCacheService,
   ) {
     super();
   }
@@ -89,6 +91,16 @@ export class TrendQueueEventsListener extends QueueEventsHost {
     // 유저 채널 발송
     if (userMessage) {
       await this.sendNotification(userMessage, 'USER');
+    }
+
+    // 수집 완료 시 소스 목록 캐시 무효화
+    try {
+      await this.trendsCacheService.invalidateSources();
+      this.logger.debug('[Queue Success] 소스 목록 캐시 무효화 완료');
+    } catch (error: any) {
+      this.logger.warn(
+        `[Queue Success] 소스 목록 캐시 무효화 실패(무시): ${error.message}`,
+      );
     }
   }
 

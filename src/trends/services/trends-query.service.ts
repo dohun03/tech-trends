@@ -1,15 +1,10 @@
-import {
-  Injectable,
-  Logger,
-  InternalServerErrorException,
-  NotFoundException,
-  HttpException,
-} from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException, NotFoundException, HttpException } from '@nestjs/common';
 import { AiService } from 'ai/ai.service';
 import { ListTrendsQueryDto } from 'trends/dto/list-trends-query.dto';
 import { SearchTrendsQueryDto } from 'trends/dto/search-trends-query.dto';
 import { TechTrend } from 'trends/entities/tech-trend.entity';
 import { TechTrendRepository } from 'trends/repositories/tech-trend.repository';
+import { TrendsCacheService } from 'trends/cache/trends-cache.service';
 
 @Injectable()
 export class TrendsQueryService {
@@ -18,6 +13,7 @@ export class TrendsQueryService {
   constructor(
     private readonly techTrendRepository: TechTrendRepository,
     private readonly aiService: AiService,
+    private readonly trendsCacheService: TrendsCacheService,
   ) {}
 
   // 일반 목록 조회
@@ -117,13 +113,31 @@ export class TrendsQueryService {
 
   // 출처 목록 조회
   async getUniqueSources(): Promise<string[]> {
+    // 1) 캐시 조회
     try {
-      return await this.techTrendRepository.findUniqueSources();
+      const cached = await this.trendsCacheService.getSources();
+      if (cached) {
+        this.logger.debug('[getUniqueSources] 캐시 HIT');
+        return cached;
+      }
+    } catch (error) {
+      this.logger.warn(`[getUniqueSources] 캐시 조회 실패, DB로 폴백: ${error}`);
+    }
+
+    // 2) 캐시 미스 시 DB 조회 후 캐시 저장
+    try {
+      const sources = await this.techTrendRepository.findUniqueSources();
+
+      try {
+        await this.trendsCacheService.setSources(sources);
+      } catch (error) {
+        this.logger.warn(`[getUniqueSources] 캐시 저장 실패(무시): ${error}`);
+      }
+
+      return sources;
     } catch (error) {
       this.logger.error(`[getUniqueSources] 소스 목록 조회 에러: ${error}`);
-      throw new InternalServerErrorException(
-        '출처 목록을 불러오지 못했습니다.',
-      );
+      throw new InternalServerErrorException( '출처 목록을 불러오지 못했습니다.');
     }
   }
 

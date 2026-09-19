@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { TrendQueueEventsListener } from './trends-queue.events';
 import { TechTrendRepository } from '../repositories/tech-trend.repository';
+import { TrendsCacheService } from '../cache/trends-cache.service';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -10,6 +11,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('TrendQueueEventsListener', () => {
   let listener: TrendQueueEventsListener;
   let repository: jest.Mocked<TechTrendRepository>;
+  let trendsCacheService: jest.Mocked<TrendsCacheService>;
 
   const mockAdminWebhook = 'https://discord.com/api/webhooks/admin';
   const mockUserWebhook = 'https://discord.com/api/webhooks/user';
@@ -35,11 +37,20 @@ describe('TrendQueueEventsListener', () => {
             findSavedSince: jest.fn(),
           },
         },
+        {
+          provide: TrendsCacheService,
+          useValue: {
+            getSources: jest.fn(),
+            setSources: jest.fn(),
+            invalidateSources: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     listener = module.get<TrendQueueEventsListener>(TrendQueueEventsListener);
     repository = module.get(TechTrendRepository);
+    trendsCacheService = module.get(TrendsCacheService);
 
     jest.clearAllMocks();
   });
@@ -77,6 +88,8 @@ describe('TrendQueueEventsListener', () => {
           content: expect.stringContaining('📢 **[GEEKS] 새로운 트렌드 아티클이 도착했습니다!**'),
         }),
       );
+
+      expect(trendsCacheService.invalidateSources).toHaveBeenCalledTimes(1);
     });
 
     it('재시도로 저장이 나뉘더라도 오늘 누적 전체를 조회해 알림에 반영해야 한다', async () => {
