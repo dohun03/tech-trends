@@ -9,13 +9,19 @@ import { BullModule } from '@nestjs/bullmq';
 import { WinstonModule } from 'nest-winston';
 import { winstonLoggerOptions } from './common/config/logger.config';
 import aiConfig from './ai/config/ai.config';
+import { RedisModule } from './redis/redis.module';
+import {
+  createRedisThrottleKey,
+  getRedisThrottleTracker,
+  RedisThrottlerStorage,
+} from './redis/redis-throttler.storage';
 
 @Module({
   imports: [
     WinstonModule.forRoot(winstonLoggerOptions),
     ScheduleModule.forRoot(),
     ConfigModule.forRoot({
-      isGlobal: true, 
+      isGlobal: true,
       envFilePath: '.env',
       load: [aiConfig],
     }),
@@ -38,13 +44,23 @@ import aiConfig from './ai/config/ai.config';
     }),
 
     // 전역 설정은 1분에 100번으로 요청 제한
-    ThrottlerModule.forRoot([
-      {
-        name: 'global',
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      imports: [RedisModule],
+      inject: [RedisThrottlerStorage],
+      useFactory: (storage: RedisThrottlerStorage) => ({
+        // Redis TTL 기반 storage와 가벼운 raw key 생성으로 in-memory timer를 제거한다.
+        storage,
+        getTracker: getRedisThrottleTracker,
+        generateKey: createRedisThrottleKey,
+        throttlers: [
+          {
+            name: 'global',
+            ttl: 60000,
+            limit: 100,
+          },
+        ],
+      }),
+    }),
     DatabaseModule,
     TrendsModule,
   ],
