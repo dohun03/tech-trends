@@ -17,6 +17,7 @@ describe('TrendsQueryService', () => {
   beforeEach(async () => {
     const mockRepository = {
       listTrends: jest.fn(),
+      countTrends: jest.fn(),
       searchHybrid: jest.fn(),
       searchKeyword: jest.fn(),
       findUniqueSources: jest.fn(),
@@ -36,6 +37,8 @@ describe('TrendsQueryService', () => {
       setDetail: jest.fn().mockResolvedValue(undefined),
       getRelated: jest.fn(),
       setRelated: jest.fn().mockResolvedValue(undefined),
+      getListCount: jest.fn(),
+      setListCount: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -59,11 +62,9 @@ describe('TrendsQueryService', () => {
 
   describe('listTrends', () => {
     it('listTrends를 호출하고 페이지네이션 메타데이터를 계산하여 반환해야 한다', async () => {
-      const mockResult = {
-        data: [{ id: 1, title: '테스트 아티클' }],
-        totalCount: 12,
-      };
-      repository.listTrends.mockResolvedValue(mockResult as any);
+      const mockData = [{ id: 1, title: '테스트 아티클' }];
+      repository.listTrends.mockResolvedValue(mockData as any);
+      trendsCacheService.getListCount.mockResolvedValue(12);
 
       const result = await service.listTrends({});
 
@@ -75,7 +76,7 @@ describe('TrendsQueryService', () => {
         sort: 'CREATED_DESC',
       });
       expect(result).toEqual({
-        data: mockResult.data,
+        data: mockData,
         meta: {
           totalCount: 12,
           totalPages: 3,
@@ -83,10 +84,64 @@ describe('TrendsQueryService', () => {
           currentPage: 1,
         },
       });
+      expect(repository.countTrends).not.toHaveBeenCalled();
+    });
+
+    it('COUNT 캐시 미스 시 DB COUNT 후 캐시 저장을 요청해야 한다', async () => {
+      repository.listTrends.mockResolvedValue([]);
+      trendsCacheService.getListCount.mockResolvedValue(null);
+      repository.countTrends.mockResolvedValue(12);
+
+      await expect(
+        service.listTrends({ source: 'github' }),
+      ).resolves.toMatchObject({
+        meta: { totalCount: 12 },
+      });
+
+      expect(repository.countTrends).toHaveBeenCalledWith({
+        source: 'github',
+        isNew: false,
+      });
+      expect(trendsCacheService.setListCount).toHaveBeenCalledWith(
+        'github',
+        false,
+        12,
+      );
+    });
+
+    it('캐시된 COUNT가 0이어도 유효한 값으로 사용해야 한다', async () => {
+      repository.listTrends.mockResolvedValue([]);
+      trendsCacheService.getListCount.mockResolvedValue(0);
+
+      await expect(
+        service.listTrends({ source: 'unknown' }),
+      ).resolves.toMatchObject({
+        meta: { totalCount: 0 },
+      });
+
+      expect(repository.countTrends).not.toHaveBeenCalled();
+    });
+
+    it('COUNT 캐시 조회 실패 시 DB COUNT로 폴백해야 한다', async () => {
+      repository.listTrends.mockResolvedValue([]);
+      trendsCacheService.getListCount.mockRejectedValue(
+        new Error('Redis 다운'),
+      );
+      repository.countTrends.mockResolvedValue(7);
+
+      await expect(service.listTrends({})).resolves.toMatchObject({
+        meta: { totalCount: 7 },
+      });
+
+      expect(repository.countTrends).toHaveBeenCalledWith({
+        source: 'ALL',
+        isNew: false,
+      });
     });
 
     it('처리 중 에러 발생 시 InternalServerErrorException을 던져야 한다', async () => {
       repository.listTrends.mockRejectedValue(new Error('DB 에러'));
+      trendsCacheService.getListCount.mockResolvedValue(0);
 
       await expect(service.listTrends({})).rejects.toThrow(
         InternalServerErrorException,

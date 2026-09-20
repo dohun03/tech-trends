@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TrendsCacheService } from './trends-cache.service';
 import { RedisService } from 'redis/redis.service';
 import {
+  trendListCountCacheKey,
   TRENDS_SOURCES_CACHE_KEY,
   TRENDS_SOURCES_CACHE_TTL_ENV_KEY,
 } from './trends-cache.constants';
@@ -84,6 +85,27 @@ describe('TrendsCacheService', () => {
 
       expect(redisService.delCache).toHaveBeenCalledWith({
         key: TRENDS_SOURCES_CACHE_KEY,
+      });
+    });
+  });
+
+  describe('list count cache', () => {
+    it('필터 조합별 키와 3분 TTL로 COUNT를 저장해야 한다', async () => {
+      await service.setListCount('github', false, 42);
+
+      expect(redisService.setCache).toHaveBeenCalledWith({
+        key: trendListCountCacheKey('github', false),
+        value: 42,
+        ttlSeconds: 180,
+      });
+    });
+
+    it('동일 필터 조합의 캐시된 COUNT를 조회해야 한다', async () => {
+      redisService.getCache.mockResolvedValue(42);
+
+      await expect(service.getListCount('github', true)).resolves.toBe(42);
+      expect(redisService.getCache).toHaveBeenCalledWith({
+        key: trendListCountCacheKey('github', true),
       });
     });
   });

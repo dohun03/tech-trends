@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, MoreThanOrEqual, Repository, SelectQueryBuilder } from 'typeorm';
 import { TechTrend } from '../entities/tech-trend.entity';
 import { ConfigService } from '@nestjs/config';
 import { SortOption } from '../dto/list-trends-query.dto';
@@ -26,6 +26,11 @@ interface SearchParams {
 interface SearchResult {
   data: any[];
   totalCount: number;
+}
+
+interface ListCountParams {
+  source: string;
+  isNew: boolean;
 }
 
 export interface RelatedTrendRow {
@@ -112,8 +117,8 @@ export class TechTrendRepository {
     ]);
   }
 
-  // 기본 목록 조회
-  async listTrends(params: ListTrendsParams): Promise<SearchResult> {
+  // 아티클 목록 조회
+  async listTrends(params: ListTrendsParams): Promise<TechTrend[]> {
     const { page, limit, source, isNew, sort } = params;
 
     const qb = this.repository
@@ -132,16 +137,7 @@ export class TechTrendRepository {
         'trend.mined_at',
       ]);
 
-    // 출처 필터
-    if (source !== 'ALL') {
-      qb.andWhere('trend.source = :source', { source });
-    }
-
-    // 오늘 수집된 글만 보기
-    if (isNew) {
-      qb.andWhere('trend.mined_at >= CURRENT_DATE');
-      qb.andWhere("trend.mined_at < CURRENT_DATE + INTERVAL '1 day'");
-    }
+    this.applyListFilters(qb, { source, isNew });
 
     switch (sort) {
       case 'MINED_DESC':
@@ -187,9 +183,26 @@ export class TechTrendRepository {
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [data, totalCount] = await qb.getManyAndCount();
+    return qb.getMany();
+  }
 
-    return { data, totalCount };
+  // 아티클 카운트 조회
+  async countTrends(params: ListCountParams): Promise<number> {
+    const qb = this.repository.createQueryBuilder('trend');
+    this.applyListFilters(qb, params);
+    return qb.getCount();
+  }
+
+  // 카운트 값에 영향을 주는 값 필터 (listTrends, countTrends 공통 사용)
+  private applyListFilters(qb: SelectQueryBuilder<TechTrend>, params: ListCountParams): void {
+    if (params.source !== 'ALL') {
+      qb.andWhere('trend.source = :source', { source: params.source });
+    }
+
+    if (params.isNew) {
+      qb.andWhere('trend.mined_at >= CURRENT_DATE');
+      qb.andWhere("trend.mined_at < CURRENT_DATE + INTERVAL '1 day'");
+    }
   }
 
   // 키워드 검색

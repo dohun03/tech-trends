@@ -6,11 +6,13 @@ import {
   TRENDS_DETAIL_CACHE_TTL_ENV_KEY,
   TRENDS_RELATED_CACHE_TTL_DEFAULT_SECONDS,
   TRENDS_RELATED_CACHE_TTL_ENV_KEY,
+  TRENDS_LIST_COUNT_CACHE_TTL_SECONDS,
   TRENDS_SOURCES_CACHE_KEY,
   TRENDS_SOURCES_CACHE_TTL_DEFAULT_SECONDS,
   TRENDS_SOURCES_CACHE_TTL_ENV_KEY,
   trendDetailCacheKey,
   trendRelatedCacheKey,
+  trendListCountCacheKey,
 } from './trends-cache.constants';
 
 @Injectable()
@@ -80,6 +82,21 @@ export class TrendsCacheService {
       key: trendRelatedCacheKey(id, limit),
       value,
       ttlSeconds: this.relatedCacheTtlSeconds,
+    });
+  }
+
+  // 아티클 목록 카운트 캐시
+  async getListCount(source: string, isNew: boolean): Promise<number | null> {
+    return this.redisService.getCache<number>({
+      key: trendListCountCacheKey(source, isNew),
+    });
+  }
+
+  async setListCount(source: string, isNew: boolean, totalCount: number): Promise<void> {
+    await this.redisService.setCache({
+      key: trendListCountCacheKey(source, isNew),
+      value: totalCount,
+      ttlSeconds: TRENDS_LIST_COUNT_CACHE_TTL_SECONDS,
     });
   }
 }

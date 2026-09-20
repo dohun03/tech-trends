@@ -19,6 +19,9 @@ export class TrendsQueryService {
   private readonly detailLoads = new Map<number, Promise<TechTrend>>();
   private readonly relatedLoads = new Map<string, Promise<{ data: RelatedTrendRow[] }>>();
 
+  // 동일 필터의 동시 COUNT cache miss를 하나의 DB COUNT로 병합한다.
+  private readonly listCountLoads = new Map<string, Promise<number>>();
+
   constructor(
     private readonly techTrendRepository: TechTrendRepository,
     private readonly aiService: AiService,
@@ -35,19 +38,22 @@ export class TrendsQueryService {
         isNew = false,
         sort = 'CREATED_DESC',
       } = query;
-      const result = await this.techTrendRepository.listTrends({
-        page,
-        limit,
-        source,
-        isNew,
-        sort,
-      });
+      const [data, totalCount] = await Promise.all([
+        this.techTrendRepository.listTrends({
+          page,
+          limit,
+          source,
+          isNew,
+          sort,
+        }),
+        this.getListCount(source, isNew),
+      ]);
 
       return {
-        data: result.data,
+        data,
         meta: {
-          totalCount: result.totalCount,
-          totalPages: Math.ceil(result.totalCount / limit),
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
           itemsPerPage: limit,
           currentPage: page,
         },
@@ -57,6 +63,33 @@ export class TrendsQueryService {
       throw new InternalServerErrorException(
         '트렌드 목록 조회 중 에러가 발생했습니다.',
       );
+    }
+  }
+
+  private async getListCount(source: string, isNew: boolean): Promise<number> {
+    // 캐시 히트: 값 바로 반환
+    const cached = await this.trendsCacheService
+      .getListCount(source, isNew)
+      .catch(() => null);
+    if (cached !== null) return cached;
+
+    // 락 걸기
+    const key = `${source}:${isNew}`;
+    const pending = this.listCountLoads.get(key);
+    if (pending) return pending;
+
+    // 캐시 미스: DB COUNT로 폴백한다.
+    const load = this.techTrendRepository.countTrends({ source, isNew });
+    this.listCountLoads.set(key, load);
+    try {
+      const totalCount = await load;
+      this.writeCache(
+        'listTrends',
+        this.trendsCacheService.setListCount(source, isNew, totalCount),
+      );
+      return totalCount;
+    } finally {
+      this.listCountLoads.delete(key);
     }
   }
 
@@ -203,7 +236,7 @@ export class TrendsQueryService {
         .getRelated<{ data: RelatedTrendRow[] }>(id, limit)
         .catch(() => null);
       if (cached) return cached;
-      
+
       // 캐시 미스: 락 걸기
       const key = `${id}:${limit}`;
       const pending = this.relatedLoads.get(key);
