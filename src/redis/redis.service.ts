@@ -76,7 +76,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const password =
       this.configService.get<string>('REDIS_PASSWORD') || undefined;
 
-    this.client = new Redis({ host, port, password });
+    this.client = new Redis({
+      host,
+      port,
+      password,
+      // Redis 장애 시 요청을 오프라인 큐에 쌓지 않고 즉시 호출자에게 실패를 알린다.
+      enableOfflineQueue: false,
+      // 명령 재시도 대기는 storage의 fail-open 폴백을 지연시키므로 비활성화한다.
+      maxRetriesPerRequest: 0,
+      connectTimeout: 1000,
+      // 연결 자체는 짧은 backoff로 계속 재시도해 Redis 복구 후 자동 재연결한다.
+      retryStrategy: (attempt) => Math.min(attempt * 100, 1000),
+    });
 
     this.client.on('connect', () => {
       this.logger.log('Redis 서버에 성공적으로 연결되었습니다.');

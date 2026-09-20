@@ -57,4 +57,22 @@ describe('RedisThrottlerStorage', () => {
       `throttle:v1:global:TrendsController:getTrends:${tracker}`,
     );
   });
+
+  it('Redis 장애 시 요청을 차단하지 않고 fail-open 결과를 반환해야 한다', async () => {
+    redisService.incrementThrottle.mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(
+      storage.increment(
+        'throttle:v1:global:TrendsController:getTrends:10.0.0.1',
+        60_000,
+        100,
+        60_000,
+      ),
+    ).resolves.toEqual({
+      totalHits: 0,
+      timeToExpire: 0,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    });
+  });
 });

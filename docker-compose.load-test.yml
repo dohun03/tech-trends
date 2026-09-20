@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tech-trends-backend-load-test
+    env_file:
+      - .env
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: 5432
+      # 부하 테스트 전용 Redis 컨테이너를 사용합니다.
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ENABLE_PERF_LOG: 'true'
+      TZ: Asia/Seoul
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./logs:/usr/src/app/logs
+    # Redis와 합산해 1GiB 예산 안에서 backend에 768MiB를 할당합니다.
+    mem_limit: 768MiB
+    cpus: 2.0
+    restart: 'no'
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: tech-trends-redis-load-test
+    # 데이터 상한과 LRU eviction을 Redis에 위임해 한도 도달 시에도 계속 동작합니다.
+    command: >-
+      redis-server --appendonly no --save '' --maxmemory 192mb
+      --maxmemory-policy allkeys-lru
+    mem_limit: 256MiB
+    restart: 'no'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
