@@ -9,36 +9,75 @@ services:
     environment:
       DB_HOST: host.docker.internal
       DB_PORT: 5432
-      # 부하 테스트 전용 Redis 컨테이너를 사용합니다.
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      # 캐시/Throttler와 BullMQ는 각각 전용 Redis 컨테이너를 사용합니다.
+      REDIS_CACHE_HOST: redis-cache
+      REDIS_CACHE_PORT: 6379
+      REDIS_QUEUE_HOST: redis-queue
+      REDIS_QUEUE_PORT: 6379
       ENABLE_PERF_LOG: 'true'
       TZ: Asia/Seoul
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     volumes:
       - ./logs:/usr/src/app/logs
-    # Redis와 합산해 1GiB 예산 안에서 backend에 768MiB를 할당합니다.
-    mem_limit: 768MiB
-    cpus: 2.0
+    # 컨테이너 그룹은 896MiB로 제한해 1GiB 호스트에서 OS/Docker용 128MiB를 남긴다.
+    mem_limit: 576MiB
+    cpus: 1.7
     restart: 'no'
     depends_on:
-      redis:
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
         condition: service_healthy
 
-  redis:
+  redis-cache:
     image: redis:7-alpine
-    container_name: tech-trends-redis-load-test
+    container_name: tech-trends-redis-cache-load-test
     # 데이터 상한과 LRU eviction을 Redis에 위임해 한도 도달 시에도 계속 동작합니다.
     command: >-
       redis-server --appendonly no --save '' --maxmemory 192mb
       --maxmemory-policy allkeys-lru
-    mem_limit: 256MiB
+    mem_limit: 224MiB
+    cpus: 0.1
     restart: 'no'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
+
+  redis-queue:
+    image: redis:7-alpine
+    container_name: tech-trends-redis-queue-load-test
+    command: >-
+      redis-server --appendonly yes --appendfsync everysec --maxmemory 48mb
+      --maxmemory-policy noeviction
+    mem_limit: 64MiB
+    cpus: 0.1
+    volumes:
+      - redis_queue_load_test_data:/data
+    restart: 'no'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nginx:
+    image: nginx:alpine
+    container_name: tech-trends-nginx-load-test
+    ports:
+      - '3000:80'
+    volumes:
+      - ./nginx/load-test.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    mem_limit: 32MiB
+    cpus: 0.1
+    restart: 'no'
+    depends_on:
+      - backend
+
+volumes:
+  redis_queue_load_test_data:
