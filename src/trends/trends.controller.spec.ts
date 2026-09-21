@@ -19,11 +19,13 @@ describe('TrendsController - Throttler Test', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [
         // 1. ThrottlerModule 설정 (테스트 환경)
-        ThrottlerModule.forRoot([{
-          name: 'global',
-          ttl: 10000,
-          limit: 5,
-        }]),
+        ThrottlerModule.forRoot([
+          {
+            name: 'global',
+            ttl: 10000,
+            limit: 5,
+          },
+        ]),
       ],
       controllers: [TrendsController],
       providers: [
@@ -47,12 +49,12 @@ describe('TrendsController - Throttler Test', () => {
 
     // 1~5번째 요청: 정상 통과 (200 OK)
     for (let i = 1; i <= 5; i++) {
-      const res = await agent.get('/api/trends/search?search=nestjs');
+      const res = await agent.get('/trends/search?search=nestjs');
       expect(res.status).toBe(200);
     }
 
     // 6번째 요청: 제한 초과 (429 Too Many Requests)
-    const blockedRes = await agent.get('/api/trends/search?search=nestjs');
+    const blockedRes = await agent.get('/trends/search?search=nestjs');
     expect(blockedRes.status).toBe(429);
   });
 });

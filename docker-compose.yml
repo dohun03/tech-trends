@@ -25,14 +25,17 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_QUEUE_HOST=redis-queue
+      - REDIS_QUEUE_PORT=6379
       - TZ=Asia/Seoul
     volumes:
       - ./logs:/usr/src/app/logs
     depends_on:
       - postgres
-      - redis
+      - redis-cache
+      - redis-queue
     restart: always
 
   postgres:
@@ -50,17 +53,32 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: always
 
-  redis:
+  redis-cache:
     image: redis:7-alpine
-    container_name: tech-trends-redis
+    container_name: tech-trends-redis-cache
     expose:
       - "6379"
     environment:
       - TZ=Asia/Seoul
+    command: >-
+      redis-server --appendonly no --save '' --maxmemory 192mb
+      --maxmemory-policy allkeys-lru
+    restart: always
+
+  redis-queue:
+    image: redis:7-alpine
+    container_name: tech-trends-redis-queue
+    expose:
+      - "6379"
+    environment:
+      - TZ=Asia/Seoul
+    command: >-
+      redis-server --appendonly yes --appendfsync everysec
+      --maxmemory-policy noeviction
     volumes:
-      - redis_data:/data
+      - redis_queue_data:/data
     restart: always
 
 volumes:
   postgres_data:
-  redis_data:
+  redis_queue_data:

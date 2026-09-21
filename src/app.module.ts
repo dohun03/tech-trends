@@ -15,6 +15,7 @@ import {
   getRedisThrottleTracker,
   RedisThrottlerStorage,
 } from './redis/redis-throttler.storage';
+import redisConfig, { RedisConnectionConfig } from './redis/redis.config';
 
 @Module({
   imports: [
@@ -23,20 +24,26 @@ import {
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      load: [aiConfig],
+      load: [aiConfig, redisConfig],
     }),
 
-    // BullMQ Redis 연결 기본 설정
+    // BullMQ는 캐시와 분리된 전용 Redis를 사용한다.
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST') || 'localhost',
-          port: configService.get<number>('REDIS_PORT') || 6379,
-          password: configService.get<string>('REDIS_PASSWORD'),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const connection =
+          configService.getOrThrow<RedisConnectionConfig>('redis.queue');
+
+        return {
+          connection: {
+            ...connection,
+            // BullMQ의 blocking connection이 재시도 한도를 자체 관리하므로
+            // ioredis 재시도 한도는 반드시 null이어야 한다.
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
     }),
     // 트렌드 수집용 큐 등록
     BullModule.registerQueue({

@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
+import { RedisConnectionConfig } from './redis.config';
 
 export interface LockParams {
   key: string;
@@ -71,10 +72,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const host = this.configService.get<string>('REDIS_HOST') || 'localhost';
-    const port = Number(this.configService.get<number>('REDIS_PORT')) || 6379;
-    const password =
-      this.configService.get<string>('REDIS_PASSWORD') || undefined;
+    const { host, port, password } =
+      this.configService.getOrThrow<RedisConnectionConfig>('redis.cache');
 
     this.client = new Redis({
       host,
@@ -170,7 +169,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Redis 원자 연산으로 throttle 카운터와 차단 TTL을 갱신
-  async incrementThrottle(params: IncrementThrottleParams): Promise<ThrottleIncrementResult> {
+  async incrementThrottle(
+    params: IncrementThrottleParams,
+  ): Promise<ThrottleIncrementResult> {
     const { key, ttlMs, limit, blockDurationMs } = params;
     const result = (await this.client.eval(
       THROTTLE_INCREMENT_LUA,
