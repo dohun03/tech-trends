@@ -5,12 +5,14 @@ services:
     image: nginx:alpine
     container_name: tech-trends-nginx
     ports:
-      - "80:80"
+      - '80:80'
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - backend
+    mem_limit: 32MiB
+    cpus: 0.05
     restart: always
 
   backend:
@@ -19,7 +21,7 @@ services:
       dockerfile: Dockerfile
     container_name: tech-trends-backend
     expose:
-      - "3000"
+      - '3000'
     env_file:
       - .env
     environment:
@@ -36,13 +38,15 @@ services:
       - postgres
       - redis-cache
       - redis-queue
+    mem_limit: 320MiB
+    cpus: 1.5
     restart: always
 
   postgres:
     image: pgvector/pgvector:pg16
     container_name: tech-trends-postgres
     expose:
-      - "5432"
+      - '5432'
     environment:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-mypassword}
@@ -51,25 +55,29 @@ services:
       PGTZ: Asia/Seoul
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    mem_limit: 256MiB
+    cpus: 0.3
     restart: always
 
   redis-cache:
     image: redis:7-alpine
     container_name: tech-trends-redis-cache
     expose:
-      - "6379"
+      - '6379'
     environment:
       - TZ=Asia/Seoul
     command: >-
       redis-server --appendonly no --save '' --maxmemory 192mb
       --maxmemory-policy allkeys-lru
+    mem_limit: 224MiB
+    cpus: 0.1
     restart: always
 
   redis-queue:
     image: redis:7-alpine
     container_name: tech-trends-redis-queue
     expose:
-      - "6379"
+      - '6379'
     environment:
       - TZ=Asia/Seoul
     command: >-
@@ -77,6 +85,8 @@ services:
       --maxmemory-policy noeviction
     volumes:
       - redis_queue_data:/data
+    mem_limit: 64MiB
+    cpus: 0.05
     restart: always
 
 volumes:
