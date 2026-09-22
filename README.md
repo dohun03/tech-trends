@@ -12,7 +12,7 @@ RRF(Reciprocal Rank Fusion) 하이브리드 검색을 적용하여 검색 품질
 
 BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서버 타임아웃 문제를 안정적으로 해결했습니다.
 
-* **진행 기간**: 2026.07 ~ 2026.08
+* **진행 기간**: 2026.07 ~ 2026.09
 * **참여 인원**: 1명 (개인 프로젝트)
 * **접속 URL**: [https://techtrends.devsystem.fyi](https://techtrends.devsystem.fyi)
 
@@ -41,9 +41,9 @@ BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서�
 
 ---
 
-## ✅ 성능 검증 결과 (k6 부하 테스트)
+## ✅ 검색 API 성능 검증 결과 (k6 부하 테스트)
 
-> 자세한 시나리오와 디테일한 내용은 **[부하 테스트 전체 리포트](./LOAD_TEST_RESULT.md)** 참고
+> 자세한 시나리오와 디테일한 내용은 **[검색 API 부하 테스트 보고서](./SEARCH_LOAD_TEST_RESULT.md)** 참고
 
 | 검증 항목 | 결과 |
 |---|---|
@@ -53,6 +53,19 @@ BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서�
 | 하이브리드 검색 성능 (순수 DB) | p95 **125.8ms**, p99 **160.4ms**, 최대 **313 TPS**, 실패율 0% |
 | AI 장애 복원력 | 외부 임베딩 API 완전 장애 상황에서도 FTS로 자동 폴백, **가용성 100%** 유지 |
 
+---
+
+## ✅ 목록/상세/연관 API 성능 검증 결과 (k6 부하 테스트)
+
+> 자세한 시나리오와 디테일한 내용은 **[목록/상세/연관 API 부하 테스트 보고서](./LIST_LOAD_TEST_RESULT.md)** 참고
+
+| 검증 항목 | 결과 |
+|---|---|
+| PK 단건 조회(O(1)) | 데이터 1천~5만 건 전 구간에서 p95 ~25ms로 데이터량과 무관, `Index Scan` 0.1ms 확인 |
+| 목록 정렬 인덱스 안정성 | 비인덱스 정렬 3종에서 최대 43배 지연 발견 → 복합 인덱스 추가로 해결 |
+| 이벤트루프 스톨 근본 원인 규명 | 최대 71초 스톨의 원인이 in-memory Rate Limiter였음을 확인, Redis 기반으로 교체해 **완전 해결(0회)** |
+| Redis 장애 복원력 | Redis 중단 시에도 fail-open 폴백 적용, **5xx·timeout 0건** |
+| 최종 성능(baseline 대비) | 처리량 **+243%**, 목록 조회 p95 **-63%**, 실패율 0.021% → **0%** |
 ---
 
 ## ✨ 핵심 기능
@@ -214,10 +227,15 @@ DB_USERNAME=
 DB_PASSWORD=
 DB_DATABASE=
 
-# REDIS 정보
-REDIS_HOST=
-REDIS_PORT=
-REDIS_PASSWORD=
+# Redis 캐시/Throttler 정보 (fail-open)
+REDIS_CACHE_HOST=
+REDIS_CACHE_PORT=
+REDIS_CACHE_PASSWORD=
+
+# BullMQ 전용 Redis 정보 (영속 큐)
+REDIS_QUEUE_HOST=
+REDIS_QUEUE_PORT=
+REDIS_QUEUE_PASSWORD=
 
 # CORS 허용할 주소 (쉼표로 구분)
 CORS_ORIGIN=
@@ -241,6 +259,12 @@ SCRAPER_TEXT_CONTENT_LENGTH=5000
 
 # 스케쥴러 주기 설정 (분 시 일 월 요일)
 CRON_SCHEDULE="0 2 * * *"
+
+# 임베딩 TTL 값 (30일)
+EMBEDDING_TTL_SECONDS=2592000
+
+# 소스 목록 캐시 TTL 값 (1일)
+TRENDS_SOURCES_CACHE_TTL_SECONDS=86400
 
 # 임베딩 TTL 값 (30일)
 EMBEDDING_TTL_SECONDS=2592000
