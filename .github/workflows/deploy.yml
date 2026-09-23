@@ -14,7 +14,7 @@ on:
           - back
 
 concurrency:
-  group: tech-trends-deploy-${{ github.event.inputs.target || 'validate' }}
+  group: tech-trends-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'front' }}
   cancel-in-progress: false
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
   deploy-front:
     name: Deploy Front
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'front'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'front')
     runs-on: ubuntu-latest
     steps:
       - name: Deploy with SSH
@@ -77,8 +77,20 @@ jobs:
             docker compose --env-file .env.front -f docker-compose.front.yml config --quiet
             docker compose --env-file .env.front -f docker-compose.front.yml up -d --build --remove-orphans
             docker compose --env-file .env.front -f docker-compose.front.yml ps
-            curl --fail --retry 10 --retry-connrefused --retry-delay 3 \
-              'http://127.0.0.1/api/trends?limit=1' >/dev/null
+            for attempt in $(seq 1 20); do
+              if curl --fail --silent --show-error 'http://127.0.0.1/api/trends?limit=1' >/dev/null; then
+                echo "Front API health check succeeded (attempt: $attempt)"
+                break
+              fi
+
+              if [ "$attempt" -eq 20 ]; then
+                echo 'Front API health check failed after 60 seconds.' >&2
+                docker compose --env-file .env.front -f docker-compose.front.yml logs --tail=100 backend nginx >&2
+                exit 1
+              fi
+
+              sleep 3
+            done
             docker image prune -f
 
   deploy-back:
