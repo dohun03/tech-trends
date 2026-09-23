@@ -58,7 +58,6 @@ jobs:
           host: ${{ secrets.FRONT_SSH_HOST }}
           username: ${{ secrets.FRONT_SSH_USERNAME }}
           key: ${{ secrets.FRONT_SSH_PRIVATE_KEY }}
-          script_stop: true
           script: |
             set -eu
             APP_DIR="$HOME/app"
@@ -94,7 +93,6 @@ jobs:
           host: ${{ secrets.BACK_SSH_HOST }}
           username: ${{ secrets.BACK_SSH_USERNAME }}
           key: ${{ secrets.BACK_SSH_PRIVATE_KEY }}
-          script_stop: true
           script: |
             set -eu
             APP_DIR="$HOME/app"
