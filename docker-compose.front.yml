@@ -1,0 +1,65 @@
+version: '3.8'
+
+# 앞단 인스턴스용 구성입니다.
+# 실행: docker compose --env-file .env.front -f docker-compose.front.yml up -d --build
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: tech-trends-front-nginx
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    mem_limit: 32MiB
+    cpus: 0.05
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tech-trends-front-backend
+    expose:
+      - '3000'
+    env_file:
+      - ${FRONT_ENV_FILE:-.env.front}
+    environment:
+      # DB endpoint만 외부용 DATABASE_* 이름에서 앱의 DB_* 이름으로 변환한다.
+      DB_HOST: ${DATABASE_HOST:?DATABASE_HOST must be set in .env.front}
+      DB_PORT: ${DATABASE_PORT:-5432}
+      REDIS_CACHE_HOST: redis-cache
+      REDIS_CACHE_PORT: 6379
+      REDIS_QUEUE_HOST: ${REDIS_QUEUE_HOST:?REDIS_QUEUE_HOST must be set in .env.front}
+      REDIS_QUEUE_PORT: ${REDIS_QUEUE_PORT:-6379}
+      TZ: Asia/Seoul
+    volumes:
+      - ./logs:/usr/src/app/logs
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    mem_limit: 640MiB
+    cpus: 1.85
+    restart: always
+
+  redis-cache:
+    image: redis:7-alpine
+    container_name: tech-trends-front-redis-cache
+    expose:
+      - '6379'
+    environment:
+      TZ: Asia/Seoul
+    command: >-
+      redis-server --appendonly no --save '' --maxmemory 192mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    mem_limit: 224MiB
+    cpus: 0.1
+    restart: always

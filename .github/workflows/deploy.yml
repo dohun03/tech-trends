@@ -1,37 +1,116 @@
-name: Deploy to Cloud
+name: Validate and Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: '배포할 인스턴스'
+        required: true
+        type: choice
+        options:
+          - front
+          - back
+
+concurrency:
+  group: tech-trends-deploy-${{ github.event.inputs.target || 'validate' }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  validate:
+    name: Build and configuration validation
     runs-on: ubuntu-latest
     steps:
-      - name: SSH를 통한 인스턴스 배포
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test -- --runInBand
+
+      - name: Validate deployment configuration
+        run: |
+          FRONT_ENV_FILE=.env.front.example docker compose --env-file .env.front.example -f docker-compose.front.yml config --quiet
+          docker compose --env-file .env.back.example -f docker-compose.back.yml config --quiet
+          bash -n scripts/backup-postgres-to-s3.sh
+
+  deploy-front:
+    name: Deploy Front
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'front'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy with SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ secrets.FRONT_SSH_HOST }}
+          username: ${{ secrets.FRONT_SSH_USERNAME }}
+          key: ${{ secrets.FRONT_SSH_PRIVATE_KEY }}
+          script_stop: true
           script: |
-            # 레포지터리 폴더 이동 또는 최초 클론
-            if [ ! -d "app" ]; then
-              git clone https://github.com/dohun03/tech-trends.git app
+            set -eu
+            APP_DIR="$HOME/app"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone https://github.com/dohun03/tech-trends.git "$APP_DIR"
             fi
-            cd app
-            
-            # 최신 코드 수신
-            git pull origin main
-            
-            # .env 파일 생성
-            cat << 'EOF' > .env
-            ${{ secrets.ENV_FILE }}
+
+            cd "$APP_DIR"
+            git pull --ff-only origin main
+
+            umask 077
+            cat <<'EOF' > .env.front
+            ${{ secrets.FRONT_ENV_FILE }}
             EOF
-            
-            # Docker 컨테이너 재빌드 및 재실행
-            docker compose down
-            docker compose up -d --build
-            
-            # 사용하지 않는 무거운 Docker 이미지 정리
+
+            docker compose --env-file .env.front -f docker-compose.front.yml config --quiet
+            docker compose --env-file .env.front -f docker-compose.front.yml up -d --build --remove-orphans
+            docker compose --env-file .env.front -f docker-compose.front.yml ps
+            curl --fail --retry 10 --retry-connrefused --retry-delay 3 \
+              'http://127.0.0.1/api/trends?limit=1' >/dev/null
             docker image prune -f
+
+  deploy-back:
+    name: Deploy Back
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'back'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy with SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BACK_SSH_HOST }}
+          username: ${{ secrets.BACK_SSH_USERNAME }}
+          key: ${{ secrets.BACK_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -eu
+            APP_DIR="$HOME/app"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone https://github.com/dohun03/tech-trends.git "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git pull --ff-only origin main
+
+            umask 077
+            cat <<'EOF' > .env.back
+            ${{ secrets.BACK_ENV_FILE }}
+            EOF
+
+            docker compose --env-file .env.back -f docker-compose.back.yml config --quiet
+            docker compose --env-file .env.back -f docker-compose.back.yml up -d
+            docker compose --env-file .env.back -f docker-compose.back.yml ps

@@ -1,0 +1,3 @@
+# 매일 03:15(서버 로컬 시간)에 실행한다.
+# 사전에 /var/log/tech-trends 디렉터리를 만들고, .env.back은 소유자만 읽을 수 있게 chmod 600으로 설정한다.
+15 3 * * * BACKUP_ENV_FILE=/opt/tech-trends/.env.back /opt/tech-trends/scripts/backup-postgres-to-s3.sh >> /var/log/tech-trends/postgres-backup.log 2>&1

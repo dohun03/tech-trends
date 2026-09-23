@@ -1,0 +1,69 @@
+version: '3.8'
+
+# 뒷단 인스턴스용 구성입니다.
+# 실행: docker compose --env-file .env.back -f docker-compose.back.yml up -d
+# BACK_PRIVATE_IP에는 이 인스턴스의 사설 IP만 지정한다.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: tech-trends-back-postgres
+    ports:
+      - '${BACK_PRIVATE_IP:?BACK_PRIVATE_IP must be set in .env.back}:5432:5432'
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME must be set in .env.back}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env.back}
+      POSTGRES_DB: ${DB_DATABASE:?DB_DATABASE must be set in .env.back}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 512MiB
+    cpus: 1.8
+    restart: always
+
+  redis-queue:
+    image: redis:7-alpine
+    container_name: tech-trends-back-redis-queue
+    ports:
+      - '${BACK_PRIVATE_IP:?BACK_PRIVATE_IP must be set in .env.back}:6379:6379'
+    environment:
+      TZ: Asia/Seoul
+      REDIS_QUEUE_PASSWORD: ${REDIS_QUEUE_PASSWORD:?REDIS_QUEUE_PASSWORD must be set in .env.back}
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --appendfsync
+      - everysec
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - noeviction
+      - --requirepass
+      - ${REDIS_QUEUE_PASSWORD:?REDIS_QUEUE_PASSWORD must be set in .env.back}
+    volumes:
+      - redis_queue_data:/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'redis-cli --no-auth-warning -a "$${REDIS_QUEUE_PASSWORD}" ping',
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    mem_limit: 128MiB
+    cpus: 0.2
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_queue_data:
