@@ -877,14 +877,18 @@
     };
 
     async function init() {
-      await fetchSources();
       syncUIWithState();
-      fetchTrends();
       bindEvents();
+
+      // 출처 목록이 늦어도 초기 카드 목록 렌더링을 막지 않는다.
+      const sourcesLoad = fetchSources();
+      const trendsLoad = fetchTrends();
 
       if (state.articleId) {
         openDetailByUrl(state.articleId);
       }
+
+      await Promise.all([sourcesLoad, trendsLoad]);
     }
 
     // [수정] 검색 상태 및 토글 상태에 따라 셀렉트 박스 제어 조건 완벽화
@@ -959,6 +963,8 @@
           opt.textContent = src;
           els.sourceSelect.appendChild(opt);
         });
+        // 출처 목록을 비동기로 받아도 URL의 source 필터 상태를 복원한다.
+        els.sourceSelect.value = state.source;
       } catch (e) {
         console.error('출처 목록 로드 실패', e);
       }
