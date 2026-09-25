@@ -1,16 +1,10 @@
 # 🚀 Tech Trends
 
-> 매일 새로운 IT/테크 아티클 수집 및 AI 요약 서비스
+> 매일 새로운 IT/테크 아티클을 수집하고 AI가 핵심만 요약해주는 개인 프로젝트
 
 ---
 
 ## 📋 프로젝트 개요
-
-Dev.to, GeekNews 등 주요 기술 커뮤니티 아티클을 주기적으로 자동 수집하고, LLM 기반의 기술 가치 평가·3줄 요약·1536차원 벡터 임베딩을 수행합니다.
-
-RRF(Reciprocal Rank Fusion) 하이브리드 검색을 적용하여 검색 품질을 향상시켰으며, 시맨틱 유사도 기반 연관 아티클 추천을 제공합니다.
-
-BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서버 타임아웃 문제를 안정적으로 해결했습니다.
 
 * **진행 기간**: 2026.07 ~ 2026.09
 * **참여 인원**: 1명 (개인 프로젝트)
@@ -18,120 +12,114 @@ BullMQ + Redis 비동기 큐를 도입해 외부 API Rate Limit 제어 및 서�
 
 ---
 
-## 🛠️ 기술 스택
-
-<div align="left">
-  <img src="https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" />
-  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white"/>
-  <img src="https://img.shields.io/badge/pgvector-336791?style=flat-square&logo=postgresql&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white" />
-  <img src="https://img.shields.io/badge/BullMQ-FF4500?style=flat-square&logo=redis&logoColor=white" />
-  <img src="https://img.shields.io/badge/AWS_Lightsail-FF9900?style=flat-square&logo=amazon-aws&logoColor=white" />
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" />
-</div>
-
-| 기술 | 용도 및 역할 |
-| :--- | :--- |
-| **NestJS / TypeScript** | 모듈화된 백엔드 서버 |
-| **PostgreSQL (pgvector)** | 아티클 영구 저장, 1536차원 벡터 저장 |
-| **Redis & BullMQ** | 비동기 작업 큐, 분산 락, 검색/임베딩 결과 캐싱 |
-| **AWS Lightsail / Nginx / Docker** | 호스팅, 리버스 프록시, 컨테이너 배포 |
-| **GitHub Actions** | CI/CD 자동화 |
-
----
-
-## ✅ 검색 API 성능 검증 결과 (k6 부하 테스트)
-
-> 자세한 시나리오와 디테일한 내용은 **[검색 API 부하 테스트 보고서](./SEARCH_LOAD_TEST_RESULT.md)** 참고
-
-| 검증 항목 | 결과 |
-|---|---|
-| Cache Stampede 방지 | 동일 키워드 50명 동시 요청에도 외부 임베딩 API **1회만 호출**, 실패율 0% |
-| 동시성 제어 (Semaphore) | 20건 동시 캐시 MISS 상황에서 외부 API 호출 3개로 제한, 실패율 0% |
-| Rate Limit | IP당 10초 5회 정책이 설계값과 정확히 일치 (100건 중 5건 통과 / 95건 429 차단) |
-| 하이브리드 검색 성능 (순수 DB) | p95 **125.8ms**, p99 **160.4ms**, 최대 **313 TPS**, 실패율 0% |
-| AI 장애 복원력 | 외부 임베딩 API 완전 장애 상황에서도 FTS로 자동 폴백, **가용성 100%** 유지 |
-
----
-
-## ✅ 목록/상세/연관 API 성능 검증 결과 (k6 부하 테스트)
-
-> 자세한 시나리오와 디테일한 내용은 **[목록/상세/연관 API 부하 테스트 보고서](./LIST_LOAD_TEST_RESULT.md)** 참고
-
-| 검증 항목 | 결과 |
-|---|---|
-| PK 단건 조회(O(1)) | 데이터 1천~5만 건 전 구간에서 p95 ~25ms로 데이터량과 무관, `Index Scan` 0.1ms 확인 |
-| 목록 정렬 인덱스 안정성 | 비인덱스 정렬 3종에서 최대 43배 지연 발견 → 복합 인덱스 추가로 해결 |
-| 이벤트루프 스톨 근본 원인 규명 | 최대 71초 스톨의 원인이 in-memory Rate Limiter였음을 확인, Redis 기반으로 교체해 **완전 해결(0회)** |
-| Redis 장애 복원력 | Redis 중단 시에도 fail-open 폴백 적용, **5xx·timeout 0건** |
-| 최종 성능(baseline 대비) | 처리량 **+243%**, 목록 조회 p95 **-63%**, 실패율 0.021% → **0%** |
----
-
 ## ✨ 핵심 기능
 
-- **🤖 AI 기반 아티클 가치 평가 및 자동 요약**
-  - Dev.to, GeekNews 등의 기술 아티클을 수집한 후 LLM 기반 가치 평가 수행
-  - 3줄 핵심 요약, 상세 요약, 기술 태그 자동 추출
-  - 1536차원 벡터 임베딩 생성 및 PostgreSQL 저장
-
-- **🔍 RRF 하이브리드 검색**
-  - PostgreSQL의 Full-Text Search(키워드)와 pgvector(시맨틱) 검색을 융합
-  - 키워드 매칭의 정확도와 문맥 이해도를 동시에 반영하는 RRF 랭킹 알고리즘 구현
-
-- **🔗 코사인 유사도 기반 연관 아티클 추천**
-  - 아티클 간 벡터 거리 계산을 통해 유사도 높은 연관 콘텐츠 추천
-
-- **⚡ BullMQ 기반 비동기 파이프라인 및 중복 제어**
-  - 비동기 작업 큐 구조를 도입하여 외부 AI API 제한 및 서버 타임아웃 차단
-  - Redis 분산 락을 적용하여 동시 수집 요청 시 중복 작업 완전 차단
-
-- **📊 실시간 큐 모니터링 및 웹훅 알림**
-  - Bull-Board 대시보드를 활용해 수집·처리 작업 상태 실시간 추적
-  - Discord 웹훅 연동으로 파이프라인 수행 결과 및 에러 알림 자동 수신
+- **🤖 AI 기반 아티클 가치 평가 및 자동 요약**: LLM으로 가치 평가 후 3줄 요약, 상세 요약, 기술 태그 자동 추출 + 1536차원 벡터 임베딩 생성
+- **🔍 RRF 하이브리드 검색**: PostgreSQL FTS(키워드)와 pgvector(시맨틱) 검색을 RRF로 융합
+- **🔗 연관 아티클 추천**: 벡터 코사인 거리 기반 유사 콘텐츠 추천
+- **⚡ BullMQ 기반 비동기 파이프라인**: 외부 AI API 제한/타임아웃 방지, Redis 분산 락으로 중복 수집 차단
+- **📊 실시간 모니터링**: Bull-Board 대시보드 + Discord 웹훅 알림
 
 ---
 
-## ⚡ 핵심 트러블슈팅
-
+## ⚡ 핵심 트러블슈팅 및 성과 (부하테스트 기반)
 <details>
-<summary><b>1. 검색 레이턴시 ~500ms → ~50ms (90% 단축)</b></summary>
+<summary><b>1. [처리량 3.4배 개선] 복합 인덱스 + 캐싱으로 RPS 422→1,447, p95 지연 63% 단축</b></summary>
 
-검색 시마다 임베딩 API를 동기 호출해 레이턴시와 토큰 비용이 높았음 → 검색어 정규화 + Redis 벡터 캐싱 도입 → 레이턴시 98% 단축, 토큰 비용 100% 절감.
+- **문제**: 데이터가 5만 건으로 늘어나며 정렬 쿼리가 Seq Scan으로 빠져 목록 조회 지연 및 DB I/O 부하 발생.
+- **해결**: 복합 인덱스 3종 생성 + `COUNT(*)` 집계 분리·Redis 캐싱 + Request Coalescing 적용.
+- **성과**: RPS 3.4배(422→1,447 req/s), 목록 조회 p95 63% 단축(250ms→92ms).
 </details>
 
 <details>
-<summary><b>2. Cache Stampede 방지</b></summary>
+<summary><b>2. [장애 근본원인 규명] 이벤트루프 71초 스톨의 진짜 원인 추적 및 해결</b></summary>
 
-동일 키워드에 대한 동시 요청이 몰리면 외부 API가 N번 중복 호출될 위험 → Redis 분산 락(SET NX) + Polling 대기 도입 → 50건 동시 요청에도 API 호출 1회로 제한
+- **문제**: 부하 테스트 중 다량의 유니크 IP가 유입될 때 Node.js 이벤트루프가 최대 71초간 멈추는 현상 발생. 처음엔 DB/메모리 문제로 의심.
+- **원인 추적**: 로그 분석 결과, 원인은 DB가 아니라 `@nestjs/throttler`의 기본 in-memory 저장소가 IP별 타이머를 대량 생성한 것이었음. 실제 IP 로테이션 공격과 유사한 패턴이라 잠재적 DoS 취약점으로 해석.
+- **해결**: Rate Limiter 저장소를 Redis 기반으로 교체 + fail-open 폴백 적용.
+- **성과**: 이벤트루프 스톨 211회→0회 완전 해결, Redis 장애 시에도 5xx/timeout 0건.
 </details>
 
 <details>
-<summary><b>3. 외부 AI API 장애 시 서비스 마비 위험</b></summary>
+<summary><b>3. [AI 장애 복원력] 1차 테스트에서 발견한 5초 지연 원인 분석 및 Early Exit 개선</b></summary>
 
-AI API 장애 시 검색 기능 전체 마비 위험 → 일시적 장애에 대해서 지수 백오프 재시도를 적용 -> 최종 실패 시 PostgreSQL FTS로 자동 전환하는 폴백 구조 설계 → 장애 상황에서도 가용성 100% 유지
+- **문제**: 외부 AI API(Gemini) 장애 시 FTS로 자동 전환되긴 했으나, 1차 테스트에서 p95 응답 지연이 5.17초로 급증하는 것을 발견.
+- **원인 추적**: 락 보유자(선점 요청)가 장애로 실패해도, 대기 요청들이 최대 5초(25회×200ms) 폴링을 다 채운 뒤에야 폴백하는 구조였음.
+- **해결**: 폴링 중 락 해제 여부를 추가 검증해 "락 해제 + 캐시 미생성" 감지 시 즉시 폴백하는 Early Exit 로직 도입.
+- **성과**: 가용성 100% 유지하며 장애 시 지연 5.17s→511.7ms (약 10배 단축).
 </details>
 
 <details>
-<summary><b>4. 수집/요약 파이프라인 HTTP 타임아웃 및 작업 유실</b></summary>
+<summary><b>4. [외부 API 호출 최적화] Cache Stampede 방지 및 Semaphore(3) 동시성 제어</b></summary>
 
-메모리 기반 동기 처리로 장시간 실행될 경우 HTTP 타임아웃 및 작업 내용 유실 문제 발생 ➔ **BullMQ 비동기 큐** 도입으로 즉시 응답(~50ms) 반환 ➔ **타임아웃 전면 해결 및 에러 or 서버 재시작 시 자동 작업 재개**
+- **문제**: 동시 요청 폭주 시 외부 AI API 중복 호출로 인한 토큰 비용 폭증 및 Rate Limit(429) 에러 발생 위험.
+- **해결**: Redis 분산 락(SET NX) + Polling 대기 구조로 Cache Stampede 차단 및 `Semaphore(3)` 기반 동시 호출 제어.
+- **성과**: 50건 동시 요청 시 **외부 API 호출 정확히 1회로 제한**, 20건 동시 캐시 Miss 상황에서도 **429/5xx 에러 0건** 달성.
 </details>
 
 <details>
-<summary><b>5. 수집/요약 파이프라인 내 외부 API 효율성 및 장애 격리</b></summary>
+<summary><b>5. [파이프라인 내결함성] BullMQ 기반 비동기 큐 전환 및 장애 격리</b></summary>
 
-개별 처리의 API 비효율과 일괄 처리의 단일 장애 유실 위험 ➔ **[개별 수집/요약 ↔ 배치 필터/임베딩] 혼합 구조** 도입 ➔ **API 호출·토큰 비용 최적화 및 개별 오류 스킵·배치 재시도로 장애 격리 완벽 구현**
+- **문제**: 수집/요약 파이프라인의 동기 처리로 인한 HTTP 타임아웃 및 작업 유실 발생.
+- **해결**: BullMQ 기반 비동기 큐 도입(즉시 응답 ~50ms) + 개별 수집/요약 ↔ 배치 필터/임베딩 혼합 파이프라인 설계.
+- **성과**: HTTP 타임아웃 차단, 개별 오류 스킵 및 자동 재시도(Retry)를 통한 완벽한 장애 격리 및 서버 재시작 시 자동 작업 재개.
 </details>
+
+> 그 외 세부 내용은 아래 보고서에서 확인하실 수 있습니다.
+> - [검색 API 부하 테스트 보고서](./SEARCH_LOAD_TEST_RESULT.md)
+> - [목록/상세/연관 API 부하 테스트 보고서](./LIST_LOAD_TEST_RESULT.md)
+
 ---
 
 ## 🏗️ 서비스 아키텍처
 
-<img width="100%" alt="Image" src="https://github.com/user-attachments/assets/b0cb5c14-6a4b-447b-868f-ec48180f84ae" />
+<img width="100%" alt="Image" src="https://github.com/user-attachments/assets/64d96543-0c20-46af-b005-5f7ef123430b" />
+
+
+<details>
+<summary><b>1. 인스턴스를 물리적으로 2개(Front / Back)로 분리한 이유</b></summary>
+
+OOM으로 인한 웹 서비스 중단을 막고 VPC 내부 격리로 DB 보안성과 시스템 가용성을 극대화하기 위함.
+
+</summary>
+</details>
+
+<details>
+<summary><b>2. 스케일업 대신 물리적 분리를 선택한 이유</b></summary>
+
+단일 서버 장애가 전체 서비스로 전이되는 것을 방지하고 향후 영역별 독립적 확장이 가능한 구조를 만들기 위함.
+
+</summary>
+</details>
+
+<details>
+<summary><b>3. Redis 이중화 (Cache vs Queue)</b></summary>
+
+메모리 방출 정책이 다른 웹 캐시와 작업 큐를 분리하여 데이터 유실 없는 안정적인 백그라운드 처리를 보장하기 위함.
+
+</summary>
+</details>
 
 ## 🔄 수집/요약 파이프라인 흐름
 
+<details>
+<summary><b>이미지 보기</b></summary>
 <img width="534" height="1728" alt="Image" src="https://github.com/user-attachments/assets/008f8767-15a9-46a5-8bb4-9b2a8fe6c61e" />
+</summary>
+</details>
+
+---
+
+## 🛠️ 기술 스택
+
+### BE
+<img src="https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white" /> <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" /> <img src="https://img.shields.io/badge/BullMQ-FF4500?style=flat-square&logo=redis&logoColor=white" />
+
+### DB
+<img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white"/> <img src="https://img.shields.io/badge/pgvector-336791?style=flat-square&logo=postgresql&logoColor=white"/> <img src="https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white" />
+
+### Dev-Ops
+<img src="https://img.shields.io/badge/AWS_Lightsail-FF9900?style=flat-square&logo=amazon-aws&logoColor=white" /> <img src="https://img.shields.io/badge/Amazon_S3-569A31?style=flat-square&logo=amazons3&logoColor=white" /> <img src="https://img.shields.io/badge/Nginx-009639?style=flat-square&logo=nginx&logoColor=white" /> <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" /> <img src="https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white" />
 
 ---
 
@@ -197,95 +185,3 @@ AI API 장애 시 검색 기능 전체 마비 위험 → 일시적 장애에 대
 #### 📌 향후 개선 과제
 - **가변 세마포어 & 서킷 브레이커**: Gemini API 상태(Latency, 429 비율)에 따라 동시성 한도를 실시간으로 동적 조절하는 로직 구축
 - **동적 캐시 TTL**: 검색어 유입 빈도에 따라 인기 키워드의 TTL을 다르게 가져가는 전략 적용
-
----
-
-## 🚀 실행 방법
-
-본 프로젝트는 Docker 환경에서 가장 쉽고 빠르게 실행할 수 있습니다.
-
-### 1. 실행 명령어
-
-```bash
-git clone https://github.com/dohun03/tech-trends.git
-cd tech-trends
-docker-compose up -d --build
-
-```
-
-### 2. 환경 변수 설정 (.env 파일 생성)
-
-```
-# Server (운영: production, 개발: development)
-PORT=3000
-NODE_ENV=development
-
-# DB 정보
-DB_HOST=
-DB_PORT=
-DB_USERNAME=
-DB_PASSWORD=
-DB_DATABASE=
-
-# Redis 캐시/Throttler 정보 (fail-open)
-REDIS_CACHE_HOST=
-REDIS_CACHE_PORT=
-REDIS_CACHE_PASSWORD=
-
-# BullMQ 전용 Redis 정보 (영속 큐)
-REDIS_QUEUE_HOST=
-REDIS_QUEUE_PORT=
-REDIS_QUEUE_PASSWORD=
-
-# CORS 허용할 주소 (쉼표로 구분)
-CORS_ORIGIN=
-
-# 검색 API Rate Limit (IP당 요청 제한, 부하테스트 시 SEARCH_THROTTLE_LIMIT 를 크게 올려 사용)
-SEARCH_THROTTLE_LIMIT=5
-SEARCH_THROTTLE_TTL=10000
-
-# 벡터 관련 상수 값
-SEARCH_CANDIDATE_LIMIT=50
-VECTOR_DISTANCE_THRESHOLD=0.30
-RELATED_DISTANCE_THRESHOLD=0.45
-
-# 수집 파이프라인
-SCRAPER_TARGET_SAVE_COUNT=5
-SCRAPER_BATCH_SIZE=10
-SCRAPER_REDIS_LOCK_TTL_MS=600000
-SCRAPER_AI_DELAY_SECONDS=3
-SCRAPER_TEXT_SNIPPET_LENGTH=600
-SCRAPER_TEXT_CONTENT_LENGTH=5000
-
-# 스케쥴러 주기 설정 (분 시 일 월 요일)
-CRON_SCHEDULE="0 2 * * *"
-
-# 임베딩 TTL 값 (30일)
-EMBEDDING_TTL_SECONDS=2592000
-
-# 소스 목록 캐시 TTL 값 (1일)
-TRENDS_SOURCES_CACHE_TTL_SECONDS=86400
-
-# 임베딩 TTL 값 (30일)
-EMBEDDING_TTL_SECONDS=2592000
-
-# GEMINI 임베딩 모델명
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-# GEMINI API 키
-GEMINI_API_KEY=
-
-# GROQ 모델명
-GROQ_MODEL=
-# GROQ 최대 출력 토큰 수 (OTPM=1000 대응)
-GROQ_MAX_COMPLETION_TOKENS=1000
-# GROQ API 키
-GROQ_API_KEY=
-
-#DISCORD 알림 URL (운영: 서버 IP or 도메인, 개발: http://localhost)
-CLIENT_URL=http://localhost
-
-#DISCORD 웹훅 URL
-DISCORD_ADMIN_WEBHOOK_URL=
-DISCORD_USER_WEBHOOK_URL=
-
-```
