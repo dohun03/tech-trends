@@ -13,8 +13,7 @@ services:
       - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - backend
-    mem_limit: 32MiB
-    cpus: 0.05
+    mem_limit: 64MiB
     restart: always
 
   backend:
